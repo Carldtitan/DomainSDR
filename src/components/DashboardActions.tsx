@@ -16,7 +16,7 @@ export function DashboardActions() {
     const data = await response.json().catch(() => ({}));
     setPending(false);
     setMessage(
-      `${data.processedReplies?.length || 0} repl${data.processedReplies?.length === 1 ? "y" : "ies"} processed, ${data.agentResponses?.length || 0} agent response(s) sent.`,
+      `${data.processedReplies?.length || 0} repl${data.processedReplies?.length === 1 ? "y" : "ies"} processed, ${data.agentResponses?.length || 0} response(s) sent, ${data.draftedOutreach?.length || 0} draft(s) prepared.`,
     );
     router.refresh();
   }
@@ -36,7 +36,7 @@ export function DashboardActions() {
     const data = await response.json().catch(() => ({}));
     setPending(false);
     setMessage(
-      `${data.processedReplies?.length || 0} replies processed, ${data.agentResponses?.length || 0} agent response(s) sent, ${data.sentFollowUps?.length || 0} follow-up(s) sent.`,
+      `${data.processedReplies?.length || 0} replies processed, ${data.draftedOutreach?.length || 0} draft(s), ${data.agentResponses?.length || 0} response(s), ${data.sentFollowUps?.length || 0} follow-up(s).`,
     );
     router.refresh();
   }

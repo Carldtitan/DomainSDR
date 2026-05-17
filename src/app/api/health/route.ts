@@ -1,0 +1,32 @@
+import { loadStore } from "@/lib/campaignStore";
+
+function flag(name: string) {
+  return Boolean(process.env[name]);
+}
+
+export async function GET() {
+  const store = await loadStore();
+  return Response.json({
+    ok: true,
+    services: {
+      gemini: flag("GEMINI_API_KEY"),
+      apify: flag("APIFY_TOKEN"),
+      agentMail: flag("AGENTMAIL_API_KEY") && flag("AGENTMAIL_INBOX_ID"),
+      agentPhone: flag("AGENTPHONE_API_KEY"),
+      supermemory: flag("SUPERMEMORY_API_KEY"),
+      stripe: flag("STRIPE_SECRET_KEY"),
+    },
+    data: {
+      campaigns: store.campaigns.length,
+      leads: store.buyerLeads.length,
+      messages: store.outboundMessages.length,
+      events: store.conversationEvents.length,
+      offers: store.offers.length,
+    },
+    agent: {
+      negotiationAutopilot: process.env.AGENT_AUTOPILOT_NEGOTIATION_REPLIES !== "false",
+      followUpAutopilot: process.env.AGENT_AUTOPILOT_FOLLOWUPS !== "false",
+      phoneOutboundExternal: process.env.ALLOW_EXTERNAL_PHONE_OUTBOUND === "true",
+    },
+  });
+}

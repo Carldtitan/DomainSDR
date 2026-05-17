@@ -126,6 +126,9 @@ export type ConversationEvent = {
   suggested_response?: string;
   agentmail_message_id?: string;
   agentmail_thread_id?: string;
+  external_message_id?: string;
+  external_conversation_id?: string;
+  external_call_id?: string;
   created_at: string;
 };
 
@@ -187,4 +190,5 @@ export type AppStore = {
   offers: Offer[];
   suppressions: SuppressionRecord[];
   processedAgentmailMessageIds: string[];
+  processedWebhookEventIds: string[];
 };
