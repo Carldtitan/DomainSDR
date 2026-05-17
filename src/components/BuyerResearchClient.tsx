@@ -41,6 +41,7 @@ export function BuyerResearchClient({ full }: { full: FullCampaign }) {
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div>
             <h1 className="text-2xl font-semibold text-white">Buyer Research</h1>
+            <p className="mt-1 text-sm font-medium text-cyan-100">{full.campaign.domain}</p>
             <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-300">
               {full.campaign.analysis?.positioning_statement || full.campaign.use_case_thesis}
             </p>
@@ -65,6 +66,19 @@ export function BuyerResearchClient({ full }: { full: FullCampaign }) {
               Generate Top 5
             </button>
           </div>
+        </div>
+
+        <div className="mt-5 grid gap-3 md:grid-cols-3">
+          {[
+            ["1", "Find public buyers"],
+            ["2", "Score fit and contactability"],
+            ["3", "Draft reviewed emails"],
+          ].map(([step, label]) => (
+            <div key={step} className="rounded-md border border-white/10 bg-slate-950 p-3">
+              <span className="text-xs font-semibold text-cyan-200">Step {step}</span>
+              <p className="mt-1 text-sm text-slate-200">{label}</p>
+            </div>
+          ))}
         </div>
 
         <div className="mt-5 grid gap-3 md:grid-cols-3">
@@ -103,13 +117,14 @@ export function BuyerResearchClient({ full }: { full: FullCampaign }) {
           <StatusBadge>{full.leads.length} leads</StatusBadge>
         </div>
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[920px] border-separate border-spacing-0 text-left text-sm">
+          <table className="w-full min-w-[1080px] border-separate border-spacing-0 text-left text-sm">
             <thead className="text-xs uppercase tracking-wide text-slate-500">
               <tr>
                 <th className="border-b border-white/10 py-3 pr-4">Company</th>
                 <th className="border-b border-white/10 py-3 pr-4">Website</th>
                 <th className="border-b border-white/10 py-3 pr-4">Score</th>
                 <th className="border-b border-white/10 py-3 pr-4">Reason Fit</th>
+                <th className="border-b border-white/10 py-3 pr-4">Weakness</th>
                 <th className="border-b border-white/10 py-3 pr-4">Contact</th>
                 <th className="border-b border-white/10 py-3 pr-4">Status</th>
                 <th className="border-b border-white/10 py-3">Action</th>
@@ -128,6 +143,7 @@ export function BuyerResearchClient({ full }: { full: FullCampaign }) {
                     <span className="rounded-md bg-emerald-300 px-2 py-1 font-semibold text-slate-950">{lead.fit_score}</span>
                   </td>
                   <td className="max-w-md border-b border-white/5 py-4 pr-4 text-slate-300">{lead.reason_fit}</td>
+                  <td className="max-w-xs border-b border-white/5 py-4 pr-4 text-slate-400">{lead.current_domain_weakness}</td>
                   <td className="border-b border-white/5 py-4 pr-4 text-slate-300">
                     {lead.contact_email || (
                       <a href={lead.contact_url} target="_blank" rel="noreferrer" className="text-cyan-200">
@@ -156,8 +172,8 @@ export function BuyerResearchClient({ full }: { full: FullCampaign }) {
               ))}
               {full.leads.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="py-10 text-center text-slate-400">
-                    No leads yet.
+                  <td colSpan={8} className="py-10 text-center text-slate-400">
+                    No leads yet. Click Find Buyers to run Apify research and Gemini scoring.
                   </td>
                 </tr>
               ) : null}

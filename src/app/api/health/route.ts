@@ -1,4 +1,4 @@
-import { loadStore } from "@/lib/campaignStore";
+import { loadStore, storageBackend } from "@/lib/campaignStore";
 
 function flag(name: string) {
   return Boolean(process.env[name]);
@@ -15,7 +15,9 @@ export async function GET() {
       agentPhone: flag("AGENTPHONE_API_KEY"),
       supermemory: flag("SUPERMEMORY_API_KEY"),
       stripe: flag("STRIPE_SECRET_KEY"),
+      stripeWebhook: flag("STRIPE_WEBHOOK_SECRET"),
     },
+    storage: storageBackend(),
     data: {
       campaigns: store.campaigns.length,
       leads: store.buyerLeads.length,

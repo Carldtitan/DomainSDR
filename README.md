@@ -5,7 +5,7 @@ DomainSDR is an agentic domain broker MVP. It turns one owned domain into a low-
 ## What Runs
 
 - Next.js App Router frontend and API routes.
-- SQLite local store at `.data/domain-sdr.sqlite`.
+- Hosted Postgres when `DATABASE_URL` is present, with SQLite fallback at `.data/domain-sdr.sqlite` for local development.
 - Gemini for domain analysis, scoring, email generation, reply classification, and follow-ups.
 - Apify for buyer discovery and contact enrichment.
 - AgentMail for email send/reply handling.
@@ -34,13 +34,19 @@ The app also runs a lightweight heartbeat every minute while a page is open, and
 ```bash
 GEMINI_API_KEY=
 APIFY_TOKEN=
+ALLOW_APIFY_LIVE_RUN=true
+ALLOW_APIFY_CONTACT_ENRICHMENT=true
 AGENTMAIL_API_KEY=
 AGENTMAIL_INBOX_ID=
+ALLOW_REAL_EMAIL_SEND=true
 SUPERMEMORY_API_KEY=
 
 # Controlled routing for hackathon demos
 CONTACT_OVERRIDE_EMAIL=carl@uni.minerva.edu
 CONTACT_OVERRIDE_PHONE=6284887063
+
+# Hosted database. Use Neon Postgres on Vercel for production.
+DATABASE_URL=
 
 # Public deployed base URL for deposit links and webhooks
 APP_BASE_URL=https://your-domain.example
@@ -50,6 +56,7 @@ APP_BASE_URL=https://your-domain.example
 
 ```bash
 STRIPE_SECRET_KEY=
+STRIPE_WEBHOOK_SECRET=
 
 AGENTPHONE_API_KEY=
 AGENTPHONE_AGENT_ID=
@@ -68,9 +75,50 @@ AGENT_MAX_DRAFTS_PER_TICK=5
 
 ## Supermemory vs Database
 
-Supermemory is used as agent memory, not as the primary transactional database. It stores research, buyer objections, outreach history, negotiation turns, recommendations, and a workspace snapshot. The app still needs a real transactional store for campaigns, leads, offers, suppression, idempotency, and exact dashboard state.
+Supermemory is used as agent memory, not as the primary transactional database. It stores research, buyer objections, outreach history, negotiation turns, recommendations, and a workspace snapshot. The app still needs a transactional store for campaigns, leads, offers, suppression, idempotency, and exact dashboard state.
 
-For production, replace the local SQLite layer with hosted Postgres/Neon or another transactional DB. Keep Supermemory as the agent memory and retrieval layer.
+Production storage is now automatic: set `DATABASE_URL` and the app uses hosted Postgres. Leave `DATABASE_URL` blank and it uses local SQLite.
+
+## Stripe
+
+When `STRIPE_SECRET_KEY` is configured, deposit requests create real Stripe Checkout Sessions. Without Stripe, the app uses the local mock checkout route.
+
+Configure a Stripe webhook for:
+
+```bash
+POST https://your-vercel-domain.vercel.app/api/stripe/webhook
+```
+
+Required event:
+
+```bash
+checkout.session.completed
+```
+
+Set the webhook signing secret as `STRIPE_WEBHOOK_SECRET`. The webhook marks the offer as `deposit_paid`, updates the conversation, and stores the payment event in Supermemory.
+
+## Vercel Hosting
+
+Recommended setup:
+
+```bash
+npx vercel login
+npx vercel link
+npx vercel integration add neon
+npx vercel env add DATABASE_URL production
+npx vercel env add GEMINI_API_KEY production
+npx vercel env add APIFY_TOKEN production
+npx vercel env add AGENTMAIL_API_KEY production
+npx vercel env add AGENTMAIL_INBOX_ID production
+npx vercel env add SUPERMEMORY_API_KEY production
+npx vercel env add CONTACT_OVERRIDE_EMAIL production
+npx vercel env add CONTACT_OVERRIDE_PHONE production
+npx vercel env add STRIPE_SECRET_KEY production
+npx vercel env add STRIPE_WEBHOOK_SECRET production
+npx vercel --prod
+```
+
+After deployment, set `APP_BASE_URL` to the production URL and redeploy. The included `vercel.json` schedules `/api/agent/tick` daily so it works on Vercel Hobby. Change the cron back to hourly on Vercel Pro if you want the broker working without the browser open.
 
 ## Key Routes
 
@@ -82,6 +130,7 @@ For production, replace the local SQLite layer with hosted Postgres/Neon or anot
 - `/api/agent/tick` broker work loop
 - `/api/agentphone/call` guarded AgentPhone outbound call
 - `/api/agentphone/webhook` AgentPhone webhook receiver
+- `/api/stripe/webhook` Stripe Checkout webhook receiver
 - `/api/health` service/config health check
 
 ## Development

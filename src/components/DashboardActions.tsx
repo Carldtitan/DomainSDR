@@ -45,11 +45,11 @@ export function DashboardActions() {
     <div className="flex flex-wrap items-center gap-3">
       <button className={secondaryButtonClass} disabled={pending} onClick={poll}>
         {pending ? <Loader2 className="animate-spin" size={16} /> : <Inbox size={16} />}
-        Poll AgentMail
+        Check Replies
       </button>
       <button className={secondaryButtonClass} disabled={pending} onClick={tick}>
         {pending ? <Loader2 className="animate-spin" size={16} /> : <Bot size={16} />}
-        Run Agent Work Loop
+        Run Agent Now
       </button>
       {message ? <span className="text-sm text-slate-400">{message}</span> : null}
     </div>
