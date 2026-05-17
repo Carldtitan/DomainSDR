@@ -13,6 +13,8 @@ export function AgentHeartbeat() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          discoverBuyers: true,
+          sendFirstTouch: true,
           sendNegotiationReplies: true,
           sendFollowUps: true,
         }),

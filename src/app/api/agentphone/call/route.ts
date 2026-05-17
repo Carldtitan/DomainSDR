@@ -22,7 +22,7 @@ export async function POST(request: Request) {
     campaign: full.campaign,
     lead,
     policy: full.policy,
-    toNumber: body.toNumber,
+    toNumber: body.toNumber || lead.contact_phone,
   });
 
   return Response.json(result, { status: result.ok ? 200 : 400 });

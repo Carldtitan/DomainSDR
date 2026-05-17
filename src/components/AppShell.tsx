@@ -33,7 +33,7 @@ export function AppShell({ campaign, active = "intake", children }: AppShellProp
               </span>
               <span>
                 <span className="block text-lg font-semibold tracking-normal">DomainSDR</span>
-                <span className="block text-xs text-slate-400">Low-volume domain sale campaigns</span>
+                <span className="block text-xs text-slate-400">Broker agent for owned domains</span>
               </span>
             </Link>
 
@@ -77,7 +77,7 @@ export function AppShell({ campaign, active = "intake", children }: AppShellProp
             </nav>
             <div className="inline-flex w-fit items-center gap-2 rounded-md border border-emerald-300/20 bg-emerald-300/10 px-3 py-2 text-xs font-medium text-emerald-100">
               <Bot size={14} />
-              Agent loop checks replies, drafts next steps, and sends guarded follow-ups
+              Broker watches replies, finds buyers, sends guarded outreach, and advances next steps
             </div>
           </div>
         </div>

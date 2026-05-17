@@ -16,6 +16,18 @@ function Metric({ label, value }: { label: string; value: string | number }) {
   );
 }
 
+function BrokerStep({ label, detail, state }: { label: string; detail: string; state: string }) {
+  return (
+    <div className="rounded-md border border-white/10 bg-slate-950 p-4">
+      <div className="flex items-center justify-between gap-3">
+        <p className="font-medium text-white">{label}</p>
+        <StatusBadge>{state}</StatusBadge>
+      </div>
+      <p className="mt-2 text-sm leading-5 text-slate-400">{detail}</p>
+    </div>
+  );
+}
+
 function agentRecommendation(full: NonNullable<Awaited<ReturnType<typeof getFullCampaign>>>) {
   const sent = full.messages.filter((message) => message.status === "sent").length;
   const replies = full.events.filter((event) => event.direction === "inbound").length;
@@ -43,12 +55,12 @@ export default async function DashboardPage({ params }: { params: Promise<{ id: 
         <Panel>
           <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
             <div>
-              <h1 className="text-2xl font-semibold text-white">Campaign Dashboard</h1>
+              <h1 className="text-2xl font-semibold text-white">Broker Console</h1>
               <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-300">
                 {full.campaign.analysis?.positioning_statement || full.campaign.use_case_thesis}
               </p>
               <p className="mt-3 rounded-md border border-cyan-300/20 bg-cyan-300/10 px-3 py-2 text-sm text-cyan-50">
-                Agent recommendation: {agentRecommendation(full)}
+                Current broker move: {agentRecommendation(full)}
               </p>
             </div>
             <DashboardActions />
@@ -76,15 +88,45 @@ export default async function DashboardPage({ params }: { params: Promise<{ id: 
 
         <Panel>
           <div className="mb-4 flex items-center justify-between">
+            <h2 className="text-lg font-semibold text-white">Autonomous Operating Plan</h2>
+            <StatusBadge>{full.campaign.status.replaceAll("_", " ")}</StatusBadge>
+          </div>
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+            <BrokerStep
+              label="Find buyers"
+              state={full.leads.length > 0 ? "running" : "needed"}
+              detail="Keep the buyer list full enough for a small, high-fit campaign."
+            />
+            <BrokerStep
+              label="Start outreach"
+              state={stats?.emailsSent ? "active" : "queued"}
+              detail="Send a capped first batch, then stop and wait for signal."
+            />
+            <BrokerStep
+              label="Handle replies"
+              state={stats?.repliesReceived ? "negotiating" : "watching"}
+              detail="Classify replies, suppress opt-outs, request proof or deposits when appropriate."
+            />
+            <BrokerStep
+              label="Close safely"
+              state={stats?.depositsPaid ? "deposit paid" : "ready"}
+              detail="Stripe only records intent; final transfer should go through escrow or a marketplace."
+            />
+          </div>
+        </Panel>
+
+        <Panel>
+          <div className="mb-4 flex items-center justify-between">
             <h2 className="text-lg font-semibold text-white">Pipeline</h2>
             <StatusBadge>{full.leads.length} buyers</StatusBadge>
           </div>
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[900px] border-separate border-spacing-0 text-left text-sm">
+            <table className="w-full min-w-[1040px] border-separate border-spacing-0 text-left text-sm">
               <thead className="text-xs uppercase tracking-wide text-slate-500">
                 <tr>
                   <th className="border-b border-white/10 py-3 pr-4">Buyer</th>
                   <th className="border-b border-white/10 py-3 pr-4">Fit</th>
+                  <th className="border-b border-white/10 py-3 pr-4">Contact</th>
                   <th className="border-b border-white/10 py-3 pr-4">Last message</th>
                   <th className="border-b border-white/10 py-3 pr-4">Status</th>
                   <th className="border-b border-white/10 py-3 pr-4">Next action</th>
@@ -102,6 +144,10 @@ export default async function DashboardPage({ params }: { params: Promise<{ id: 
                       </td>
                       <td className="border-b border-white/5 py-4 pr-4">
                         <span className="rounded-md bg-emerald-300 px-2 py-1 font-semibold text-slate-950">{lead.fit_score}</span>
+                      </td>
+                      <td className="border-b border-white/5 py-4 pr-4 text-slate-300">
+                        <span className="block">{lead.contact_email || "No public email"}</span>
+                        <span className="mt-1 block text-xs text-slate-500">{lead.contact_phone || "No public phone"}</span>
                       </td>
                       <td className="max-w-sm border-b border-white/5 py-4 pr-4 text-slate-300">
                         {last ? (

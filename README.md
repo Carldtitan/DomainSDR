@@ -38,6 +38,7 @@ ALLOW_APIFY_LIVE_RUN=true
 ALLOW_APIFY_CONTACT_ENRICHMENT=true
 AGENTMAIL_API_KEY=
 AGENTMAIL_INBOX_ID=
+AGENTMAIL_WEBHOOK_SECRET=
 ALLOW_REAL_EMAIL_SEND=true
 SUPERMEMORY_API_KEY=
 
@@ -65,8 +66,15 @@ ALLOW_EXTERNAL_PHONE_OUTBOUND=false
 
 AGENT_AUTOPILOT_NEGOTIATION_REPLIES=true
 AGENT_AUTOPILOT_FOLLOWUPS=true
+AGENT_AUTOPILOT_RESEARCH=true
+AGENT_AUTOPILOT_FIRST_TOUCH_EMAILS=true
+AGENT_AUTOPILOT_CALLS=false
+AGENT_RESEARCH_MIN_HOURS=6
+AGENT_MIN_LEADS_PER_CAMPAIGN=8
 AGENT_FOLLOWUP_MIN_HOURS=72
+AGENT_FIRST_TOUCH_MAX_SENDS_PER_TICK=2
 AGENT_FOLLOWUP_MAX_SENDS_PER_TICK=3
+AGENT_CALL_MAX_PER_TICK=1
 AGENT_FOLLOWUP_MAX_DAILY_SENDS=5
 AGENT_NEGOTIATION_MAX_SENDS_PER_TICK=5
 AGENT_NEGOTIATION_MAX_DAILY_SENDS=20
@@ -128,6 +136,7 @@ After deployment, set `APP_BASE_URL` to the production URL and redeploy. The inc
 - `/campaign/:id/dashboard` campaign dashboard
 - `/campaign/:id/conversation/:leadId` negotiation thread
 - `/api/agent/tick` broker work loop
+- `/api/agentmail/webhook` realtime AgentMail reply webhook receiver
 - `/api/agentphone/call` guarded AgentPhone outbound call
 - `/api/agentphone/webhook` AgentPhone webhook receiver
 - `/api/stripe/webhook` Stripe Checkout webhook receiver
@@ -141,3 +150,27 @@ npm run dev
 npm run lint
 npm run build
 ```
+
+## AgentMail Realtime Replies
+
+Polling still works, but production should use AgentMail webhooks so the broker wakes up as soon as a buyer replies.
+
+Create an AgentMail webhook for:
+
+```bash
+POST https://domainsdr.vercel.app/api/agentmail/webhook
+```
+
+Event:
+
+```bash
+message.received
+```
+
+Store the returned signing secret as:
+
+```bash
+AGENTMAIL_WEBHOOK_SECRET=whsec_...
+```
+
+The webhook processes the inbound reply, classifies it, runs the broker loop, and sends a guarded response when policy allows.

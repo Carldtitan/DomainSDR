@@ -29,14 +29,17 @@ export function DashboardActions() {
       body: JSON.stringify({
         sendFollowUps: true,
         sendNegotiationReplies: true,
+        sendFirstTouch: true,
+        discoverBuyers: true,
         minHoursSinceLastSend: 0,
         maxFollowUpsPerTick: 3,
+        maxFirstTouchSendsPerTick: 2,
       }),
     });
     const data = await response.json().catch(() => ({}));
     setPending(false);
     setMessage(
-      `${data.processedReplies?.length || 0} replies processed, ${data.draftedOutreach?.length || 0} draft(s), ${data.agentResponses?.length || 0} response(s), ${data.sentFollowUps?.length || 0} follow-up(s).`,
+      `${data.researchedCampaigns?.length || 0} research run(s), ${data.sentFirstTouch?.length || 0} first-touch email(s), ${data.processedReplies?.length || 0} replies, ${data.agentResponses?.length || 0} negotiation response(s), ${data.sentFollowUps?.length || 0} follow-up(s).`,
     );
     router.refresh();
   }
@@ -45,11 +48,11 @@ export function DashboardActions() {
     <div className="flex flex-wrap items-center gap-3">
       <button className={secondaryButtonClass} disabled={pending} onClick={poll}>
         {pending ? <Loader2 className="animate-spin" size={16} /> : <Inbox size={16} />}
-        Check Replies
+        Sync Replies
       </button>
       <button className={secondaryButtonClass} disabled={pending} onClick={tick}>
         {pending ? <Loader2 className="animate-spin" size={16} /> : <Bot size={16} />}
-        Run Agent Now
+        Wake Broker
       </button>
       {message ? <span className="text-sm text-slate-400">{message}</span> : null}
     </div>

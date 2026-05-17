@@ -44,7 +44,7 @@ export async function POST(request: Request) {
     }
 
     const override = body.overrides?.[messageId] ?? {};
-    const to = outboundEmailRecipient();
+    const to = outboundEmailRecipient(lead.contact_email);
     if (!to) {
       results.push({ id: messageId, ok: false, error: "No recipient. Add a test recipient email." });
       continue;

@@ -16,6 +16,7 @@ export async function GET() {
       supermemory: flag("SUPERMEMORY_API_KEY"),
       stripe: flag("STRIPE_SECRET_KEY"),
       stripeWebhook: flag("STRIPE_WEBHOOK_SECRET"),
+      agentMailWebhook: flag("AGENTMAIL_WEBHOOK_SECRET"),
     },
     storage: storageBackend(),
     data: {
@@ -28,6 +29,9 @@ export async function GET() {
     agent: {
       negotiationAutopilot: process.env.AGENT_AUTOPILOT_NEGOTIATION_REPLIES !== "false",
       followUpAutopilot: process.env.AGENT_AUTOPILOT_FOLLOWUPS !== "false",
+      researchAutopilot: process.env.AGENT_AUTOPILOT_RESEARCH !== "false",
+      firstTouchAutopilot: process.env.AGENT_AUTOPILOT_FIRST_TOUCH_EMAILS !== "false",
+      callAutopilot: process.env.AGENT_AUTOPILOT_CALLS === "true",
       phoneOutboundExternal: process.env.ALLOW_EXTERNAL_PHONE_OUTBOUND === "true",
     },
   });
