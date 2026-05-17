@@ -1,6 +1,7 @@
 import { pollAgentMailReplies, replyWithAgentMail, sendEmailWithAgentMail } from "@/lib/agentMailService";
 import {
   addConversationEvent,
+  addOrUpdateOutboundMessage,
   addOutboundMessage,
   addSuppression,
   isSuppressed,
@@ -9,11 +10,11 @@ import {
   updateLead,
 } from "@/lib/campaignStore";
 import { outboundEmailRecipient } from "@/lib/contactRouting";
-import { generateFollowUpEmail } from "@/lib/llmService";
+import { generateFollowUpEmail, generateOutboundEmail } from "@/lib/llmService";
 import { generateNegotiationReply } from "@/lib/negotiationEngine";
 import { createDepositLink } from "@/lib/paymentService";
 import { reconcileLeadFromReplyBody } from "@/lib/leadIdentity";
-import { saveToSupermemory } from "@/lib/supermemoryService";
+import { saveToSupermemory, saveWorkspaceSnapshot } from "@/lib/supermemoryService";
 import type { AppStore, BuyerLead, ConversationEvent, DomainCampaign, NegotiationPolicy, OutboundMessage } from "@/lib/types";
 
 type AgentTickOptions = {
@@ -21,10 +22,24 @@ type AgentTickOptions = {
   sendFollowUps?: boolean;
   minHoursSinceLastSend?: number;
   maxNegotiationRepliesPerTick?: number;
+  maxDraftsPerTick?: number;
   maxFollowUpsPerTick?: number;
   maxDailyNegotiationSends?: number;
   maxDailySends?: number;
 };
+
+function isDraftableLead(lead: BuyerLead) {
+  const text = `${lead.company_name} ${lead.website} ${lead.source_url}`.toLowerCase();
+  if (lead.fit_score < 60) return false;
+  if (!lead.contact_email && !lead.contact_url) return false;
+  if (/\b(top|best)\s+\d+\b|companies in|company profile|apps on google play|github|seedtable|tracxn|industry\b/.test(text)) {
+    return false;
+  }
+  if (/(google\.com|github\.com|dev\.to|tracxn\.com|seedtable\.com|medium\.com|forbes\.com|techcrunch\.com)/.test(text)) {
+    return false;
+  }
+  return true;
+}
 
 function hoursBetween(value: string, now = new Date()) {
   return (now.getTime() - new Date(value).getTime()) / 3_600_000;
@@ -36,10 +51,51 @@ function defaultOptions(): Required<AgentTickOptions> {
     sendFollowUps: process.env.AGENT_AUTOPILOT_FOLLOWUPS !== "false",
     minHoursSinceLastSend: Number(process.env.AGENT_FOLLOWUP_MIN_HOURS || 72),
     maxNegotiationRepliesPerTick: Number(process.env.AGENT_NEGOTIATION_MAX_SENDS_PER_TICK || 5),
+    maxDraftsPerTick: Number(process.env.AGENT_MAX_DRAFTS_PER_TICK || 5),
     maxFollowUpsPerTick: Number(process.env.AGENT_FOLLOWUP_MAX_SENDS_PER_TICK || 3),
     maxDailyNegotiationSends: Number(process.env.AGENT_NEGOTIATION_MAX_DAILY_SENDS || 20),
     maxDailySends: Number(process.env.AGENT_FOLLOWUP_MAX_DAILY_SENDS || 5),
   };
+}
+
+async function prepareOutreachDrafts(store: AppStore, maxDrafts: number) {
+  const drafted = [];
+  for (const campaign of store.campaigns.filter((item) => !["closed", "paused"].includes(item.status))) {
+    const existing = new Set(
+      store.outboundMessages
+        .filter((message) => message.campaign_id === campaign.id)
+        .map((message) => message.buyer_lead_id),
+    );
+    const leads = store.buyerLeads
+      .filter(
+        (lead) =>
+          lead.campaign_id === campaign.id &&
+          !existing.has(lead.id) &&
+          !["opted_out", "escalated"].includes(lead.status) &&
+          isDraftableLead(lead),
+      )
+      .sort((a, b) => b.fit_score - a.fit_score)
+      .slice(0, Math.max(0, maxDrafts - drafted.length));
+
+    for (const lead of leads) {
+      const generated = await generateOutboundEmail(campaign, lead);
+      const message = await addOrUpdateOutboundMessage({
+        campaign_id: campaign.id,
+        buyer_lead_id: lead.id,
+        subject: generated.subject,
+        body: generated.body,
+        status: "draft",
+        to_email: outboundEmailRecipient(),
+      });
+      await updateLead(lead.id, {
+        status: "email_drafted",
+        next_action: "Agent drafted outbound; awaiting send approval.",
+      });
+      drafted.push({ campaign_id: campaign.id, buyer_lead_id: lead.id, company_name: lead.company_name, message_id: message.id });
+      if (drafted.length >= maxDrafts) return drafted;
+    }
+  }
+  return drafted;
 }
 
 function sentToday(messages: OutboundMessage[]) {
@@ -288,6 +344,8 @@ export async function runAgentTick(options: AgentTickOptions = {}) {
   const resolved = { ...defaultOptions(), ...options };
   const processedReplies = await pollAgentMailReplies();
   let store = await loadStore();
+  const draftedOutreach = await prepareOutreachDrafts(store, resolved.maxDraftsPerTick);
+  store = await loadStore();
   const negotiationSendsRemaining = Math.max(
     0,
     resolved.maxDailyNegotiationSends - negotiationRepliesSentToday(store.outboundMessages),
@@ -396,11 +454,33 @@ export async function runAgentTick(options: AgentTickOptions = {}) {
     });
   }
 
+  await saveWorkspaceSnapshot(
+    JSON.stringify(
+      {
+        updated_at: new Date().toISOString(),
+        campaigns: store.campaigns.map((campaign) => ({
+          id: campaign.id,
+          domain: campaign.domain,
+          status: campaign.status,
+          ask_price: campaign.ask_price,
+          leads: store.buyerLeads.filter((lead) => lead.campaign_id === campaign.id).length,
+          sent: store.outboundMessages.filter((message) => message.campaign_id === campaign.id && message.status === "sent").length,
+          replies: store.conversationEvents.filter((event) => event.campaign_id === campaign.id && event.direction === "inbound").length,
+          offers: store.offers.filter((offer) => offer.campaign_id === campaign.id).length,
+        })),
+        recommendations,
+      },
+      null,
+      2,
+    ),
+  );
+
   return {
     processedReplies,
     followUps,
     sentFollowUps,
     skipped,
+    draftedOutreach,
     agentResponses: negotiationResult.agentResponses,
     skippedNegotiations: negotiationResult.skippedNegotiations,
     recommendations,

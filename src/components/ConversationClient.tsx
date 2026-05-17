@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { AlertTriangle, CreditCard, Loader2, Send, ShieldX } from "lucide-react";
+import { AlertTriangle, CreditCard, Loader2, PhoneCall, Send, ShieldX } from "lucide-react";
 import {
   buttonClass,
   FieldLabel,
@@ -176,6 +176,19 @@ function ConversationSidebar({
           <p className="mt-2 text-xs text-slate-500">Floor is enforced server-side and hidden from buyers.</p>
         </div>
         <div className="mt-4 grid gap-2">
+          <button
+            className={secondaryButtonClass}
+            disabled={Boolean(pending)}
+            onClick={() =>
+              post("/api/agentphone/call", {
+                campaignId: campaign.id,
+                leadId: lead.id,
+              })
+            }
+          >
+            {pending === "/api/agentphone/call" ? <Loader2 className="animate-spin" size={16} /> : <PhoneCall size={16} />}
+            Call Controlled Buyer
+          </button>
           <button
             className={buttonClass}
             disabled={Boolean(pending)}

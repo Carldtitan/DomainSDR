@@ -6,6 +6,7 @@ export async function POST(request: Request) {
     sendFollowUps?: boolean;
     minHoursSinceLastSend?: number;
     maxNegotiationRepliesPerTick?: number;
+    maxDraftsPerTick?: number;
     maxFollowUpsPerTick?: number;
     maxDailyNegotiationSends?: number;
     maxDailySends?: number;

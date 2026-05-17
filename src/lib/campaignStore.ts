@@ -112,6 +112,10 @@ function getDb() {
         message_id text primary key
       );
 
+      create table if not exists processed_webhook_events (
+        event_id text primary key
+      );
+
       create index if not exists idx_buyer_leads_campaign on buyer_leads(campaign_id);
       create index if not exists idx_outbound_campaign on outbound_messages(campaign_id);
       create index if not exists idx_outbound_agentmail_message on outbound_messages(agentmail_message_id);
@@ -150,6 +154,10 @@ export async function loadStore(): Promise<AppStore> {
       .prepare("select message_id from processed_agentmail_messages")
       .all()
       .map((row) => (row as { message_id: string }).message_id),
+    processedWebhookEventIds: getDb()
+      .prepare("select event_id from processed_webhook_events")
+      .all()
+      .map((row) => (row as { event_id: string }).event_id),
   };
 }
 
@@ -165,6 +173,7 @@ const replaceStoreTx = () =>
       delete from offers;
       delete from suppressions;
       delete from processed_agentmail_messages;
+      delete from processed_webhook_events;
     `);
 
     const insertCampaign = database.prepare(
@@ -197,6 +206,7 @@ const replaceStoreTx = () =>
       values (@id, @campaign_id, @buyer_lead_id, @email, @created_at, @data)
     `);
     const insertProcessed = database.prepare("insert into processed_agentmail_messages (message_id) values (?)");
+    const insertProcessedWebhook = database.prepare("insert into processed_webhook_events (event_id) values (?)");
 
     for (const item of store.campaigns) {
       insertCampaign.run({ ...item, data: JSON.stringify(item) });
@@ -243,6 +253,9 @@ const replaceStoreTx = () =>
     }
     for (const messageId of store.processedAgentmailMessageIds) {
       insertProcessed.run(messageId);
+    }
+    for (const eventId of store.processedWebhookEventIds || []) {
+      insertProcessedWebhook.run(eventId);
     }
   });
 
@@ -567,6 +580,19 @@ export async function markProcessedAgentmailMessage(messageId: string) {
 export async function hasProcessedAgentmailMessage(messageId: string) {
   const store = await loadStore();
   return store.processedAgentmailMessageIds.includes(messageId);
+}
+
+export async function markProcessedWebhookEvent(eventId: string) {
+  return mutateStore((store) => {
+    if (!store.processedWebhookEventIds.includes(eventId)) {
+      store.processedWebhookEventIds.push(eventId);
+    }
+  });
+}
+
+export async function hasProcessedWebhookEvent(eventId: string) {
+  const store = await loadStore();
+  return store.processedWebhookEventIds.includes(eventId);
 }
 
 export async function addOffer(input: Omit<Offer, "id" | "created_at" | "updated_at">) {
