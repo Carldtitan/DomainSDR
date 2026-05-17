@@ -2,6 +2,7 @@ import Link from "next/link";
 import { BarChart3, MailCheck, Search, ShieldCheck, SquarePen } from "lucide-react";
 import type { DomainCampaign } from "@/lib/types";
 import { money } from "@/lib/format";
+import { AgentHeartbeat } from "@/components/AgentHeartbeat";
 
 type AppShellProps = {
   campaign?: DomainCampaign;
@@ -22,6 +23,7 @@ export function AppShell({ campaign, active = "intake", children }: AppShellProp
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100">
+      <AgentHeartbeat />
       <header className="border-b border-white/10 bg-slate-950/95">
         <div className="mx-auto flex max-w-7xl flex-col gap-4 px-4 py-4 sm:px-6 lg:px-8">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">

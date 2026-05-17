@@ -517,6 +517,15 @@ export async function addConversationEvent(input: Omit<ConversationEvent, "id" |
   });
 }
 
+export async function updateConversationEvent(id: string, patch: Partial<ConversationEvent>) {
+  return mutateStore((store) => {
+    const event = store.conversationEvents.find((item) => item.id === id);
+    if (!event) return undefined;
+    Object.assign(event, patch);
+    return event;
+  });
+}
+
 export async function getConversationEvent(id: string) {
   const store = await loadStore();
   return store.conversationEvents.find((event) => event.id === id);

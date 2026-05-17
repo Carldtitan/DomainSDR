@@ -8,6 +8,7 @@ import {
 } from "@/lib/campaignStore";
 import { classifyReply } from "@/lib/llmService";
 import { generateNegotiationReply } from "@/lib/negotiationEngine";
+import { reconcileLeadFromReplyBody } from "@/lib/leadIdentity";
 import type { BuyerLead, DomainCampaign, NegotiationPolicy } from "@/lib/types";
 import type { OutboundMessage } from "@/lib/types";
 
@@ -244,13 +245,14 @@ export async function pollAgentMailReplies() {
   for (const listed of messages) {
     if (await hasProcessedAgentmailMessage(listed.message_id)) continue;
     const message = (await getMessage(listed.message_id)) || listed;
-    const lead = matchLead(message, store.campaigns, store.buyerLeads, store.negotiationPolicies, store.outboundMessages);
-    if (!lead) continue;
+    const matchedLead = matchLead(message, store.campaigns, store.buyerLeads, store.negotiationPolicies, store.outboundMessages);
+    if (!matchedLead) continue;
+    const body = messageBody(message);
+    const lead = reconcileLeadFromReplyBody(body, matchedLead, store.buyerLeads);
     const campaign = store.campaigns.find((item) => item.id === lead.campaign_id);
     const policy = store.negotiationPolicies.find((item) => item.campaign_id === lead.campaign_id);
     if (!campaign || !policy) continue;
 
-    const body = messageBody(message);
     const classification = await classifyReply(body);
     const draft = generateNegotiationReply(campaign, lead, { ...classification, body }, policy);
 

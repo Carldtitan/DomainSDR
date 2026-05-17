@@ -1,14 +1,28 @@
 import { pollAgentMailReplies, replyWithAgentMail, sendEmailWithAgentMail } from "@/lib/agentMailService";
-import { addConversationEvent, addOutboundMessage, isSuppressed, loadStore, updateLead } from "@/lib/campaignStore";
+import {
+  addConversationEvent,
+  addOutboundMessage,
+  addSuppression,
+  isSuppressed,
+  loadStore,
+  updateConversationEvent,
+  updateLead,
+} from "@/lib/campaignStore";
 import { outboundEmailRecipient } from "@/lib/contactRouting";
 import { generateFollowUpEmail } from "@/lib/llmService";
+import { generateNegotiationReply } from "@/lib/negotiationEngine";
+import { createDepositLink } from "@/lib/paymentService";
+import { reconcileLeadFromReplyBody } from "@/lib/leadIdentity";
 import { saveToSupermemory } from "@/lib/supermemoryService";
-import type { OutboundMessage } from "@/lib/types";
+import type { AppStore, BuyerLead, ConversationEvent, DomainCampaign, NegotiationPolicy, OutboundMessage } from "@/lib/types";
 
 type AgentTickOptions = {
+  sendNegotiationReplies?: boolean;
   sendFollowUps?: boolean;
   minHoursSinceLastSend?: number;
+  maxNegotiationRepliesPerTick?: number;
   maxFollowUpsPerTick?: number;
+  maxDailyNegotiationSends?: number;
   maxDailySends?: number;
 };
 
@@ -18,9 +32,12 @@ function hoursBetween(value: string, now = new Date()) {
 
 function defaultOptions(): Required<AgentTickOptions> {
   return {
+    sendNegotiationReplies: process.env.AGENT_AUTOPILOT_NEGOTIATION_REPLIES !== "false",
     sendFollowUps: process.env.AGENT_AUTOPILOT_FOLLOWUPS !== "false",
     minHoursSinceLastSend: Number(process.env.AGENT_FOLLOWUP_MIN_HOURS || 72),
+    maxNegotiationRepliesPerTick: Number(process.env.AGENT_NEGOTIATION_MAX_SENDS_PER_TICK || 5),
     maxFollowUpsPerTick: Number(process.env.AGENT_FOLLOWUP_MAX_SENDS_PER_TICK || 3),
+    maxDailyNegotiationSends: Number(process.env.AGENT_NEGOTIATION_MAX_DAILY_SENDS || 20),
     maxDailySends: Number(process.env.AGENT_FOLLOWUP_MAX_DAILY_SENDS || 5),
   };
 }
@@ -30,7 +47,17 @@ function sentToday(messages: OutboundMessage[]) {
   return messages.filter((message) => message.status === "sent" && message.sent_at?.slice(0, 10) === today).length;
 }
 
-function portfolioRecommendations(store: Awaited<ReturnType<typeof loadStore>>) {
+function negotiationRepliesSentToday(messages: OutboundMessage[]) {
+  const today = new Date().toISOString().slice(0, 10);
+  return messages.filter(
+    (message) =>
+      message.status === "sent" &&
+      message.sent_at?.slice(0, 10) === today &&
+      message.subject.toLowerCase().startsWith("re:"),
+  ).length;
+}
+
+function portfolioRecommendations(store: AppStore) {
   return store.campaigns.map((campaign) => {
     const leads = store.buyerLeads.filter((lead) => lead.campaign_id === campaign.id);
     const messages = store.outboundMessages.filter((message) => message.campaign_id === campaign.id);
@@ -76,10 +103,197 @@ function portfolioRecommendations(store: Awaited<ReturnType<typeof loadStore>>) 
   });
 }
 
+function hasOutboundAfter(store: AppStore, event: ConversationEvent, lead: BuyerLead) {
+  return store.conversationEvents.some(
+    (candidate) =>
+      candidate.buyer_lead_id === lead.id &&
+      candidate.direction === "outbound" &&
+      candidate.created_at > event.created_at,
+  );
+}
+
+function pendingNegotiationEvents(store: AppStore) {
+  return store.conversationEvents
+    .filter((event) => event.direction === "inbound")
+    .sort((a, b) => a.created_at.localeCompare(b.created_at))
+    .filter((event) => {
+      const currentLead = store.buyerLeads.find((lead) => lead.id === event.buyer_lead_id);
+      if (!currentLead) return false;
+      const lead = reconcileLeadFromReplyBody(event.body, currentLead, store.buyerLeads);
+      return !hasOutboundAfter(store, event, lead);
+    });
+}
+
+function depositReplyBody(campaign: DomainCampaign, draftBody: string, paymentLink: string) {
+  return `${draftBody}
+
+Deposit link: ${paymentLink}
+
+This deposit confirms intent only. The actual ${campaign.domain} transfer should still run through escrow or a trusted marketplace.`;
+}
+
+async function sendNegotiationResponse({
+  campaign,
+  lead,
+  policy,
+  event,
+}: {
+  campaign: DomainCampaign;
+  lead: BuyerLead;
+  policy: NegotiationPolicy;
+  event: ConversationEvent;
+}) {
+  const draft = generateNegotiationReply(campaign, lead, event, policy);
+  let responseBody = draft.body;
+  let depositOffer;
+  const amount = draft.accepted_amount || event.offer_amount;
+
+  if (draft.should_request_deposit) {
+    depositOffer = await createDepositLink(campaign, lead, amount || policy.ask_price);
+    responseBody = depositReplyBody(campaign, draft.body, depositOffer.payment_link);
+  }
+
+  const sent = await replyWithAgentMail(event.agentmail_message_id, responseBody);
+  const subject = `Re: ${campaign.domain}`;
+  const message = await addOutboundMessage({
+    campaign_id: campaign.id,
+    buyer_lead_id: lead.id,
+    subject,
+    body: responseBody,
+    status: sent.message_id ? "sent" : "failed",
+    to_email: outboundEmailRecipient(),
+    agentmail_message_id: sent.message_id,
+    agentmail_thread_id: sent.thread_id || event.agentmail_thread_id,
+    sent_at: new Date().toISOString(),
+    error: sent.error,
+  });
+  const outboundEvent = await addConversationEvent({
+    campaign_id: campaign.id,
+    buyer_lead_id: lead.id,
+    channel: "email",
+    direction: "outbound",
+    body: responseBody,
+    classification: "sent_email",
+    offer_amount: amount,
+    next_action: draft.should_request_deposit ? "Deposit requested; await deposit." : "Await buyer response.",
+    agentmail_message_id: sent.message_id,
+    agentmail_thread_id: sent.thread_id || event.agentmail_thread_id,
+  });
+
+  if (draft.should_suppress) {
+    await addSuppression({
+      campaign_id: campaign.id,
+      buyer_lead_id: lead.id,
+      email: lead.contact_email || outboundEmailRecipient(),
+      reason: event.classification,
+    });
+    await updateLead(lead.id, { status: "opted_out", next_action: "Suppressed" });
+  } else {
+    await updateLead(lead.id, {
+      status: draft.should_request_deposit ? "deposit_requested" : "negotiating",
+      next_action: draft.should_request_deposit ? "Await deposit" : draft.next_action,
+    });
+  }
+
+  await saveToSupermemory({
+    campaignId: campaign.id,
+    type: draft.should_request_deposit ? "agent_deposit_requested" : "agent_negotiation_response",
+    content: JSON.stringify({ lead, inbound: event, outbound: outboundEvent, message, sent, depositOffer }, null, 2),
+  });
+
+  return {
+    buyer_lead_id: lead.id,
+    company_name: lead.company_name,
+    inbound_event_id: event.id,
+    outbound_event_id: outboundEvent.id,
+    outbound_message_id: message.id,
+    sent,
+    depositOffer,
+  };
+}
+
+async function advanceNegotiations(store: AppStore, resolved: Required<AgentTickOptions>, sendsRemaining: number) {
+  const agentResponses = [];
+  const skippedNegotiations = [];
+
+  for (const event of pendingNegotiationEvents(store)) {
+    if (agentResponses.length >= resolved.maxNegotiationRepliesPerTick) {
+      skippedNegotiations.push({ event_id: event.id, reason: "negotiation send cap reached" });
+      continue;
+    }
+
+    const currentLead = store.buyerLeads.find((lead) => lead.id === event.buyer_lead_id);
+    if (!currentLead) continue;
+    const lead = reconcileLeadFromReplyBody(event.body, currentLead, store.buyerLeads);
+    if (lead.id !== event.buyer_lead_id) {
+      await updateConversationEvent(event.id, { buyer_lead_id: lead.id });
+      event.buyer_lead_id = lead.id;
+      await updateLead(currentLead.id, {
+        status: "escalated",
+        next_action: "Reply self-identified as another buyer; follow-up paused for manual review.",
+      });
+    }
+
+    const campaign = store.campaigns.find((item) => item.id === lead.campaign_id);
+    const policy = store.negotiationPolicies.find((item) => item.campaign_id === lead.campaign_id);
+    if (!campaign || !policy) continue;
+
+    if (!resolved.sendNegotiationReplies) {
+      await updateLead(lead.id, { next_action: "Agent response is ready; autopilot send is disabled." });
+      skippedNegotiations.push({ event_id: event.id, buyer_lead_id: lead.id, reason: "autopilot disabled" });
+      continue;
+    }
+
+    if (sendsRemaining <= 0) {
+      await updateLead(lead.id, { next_action: "Agent response is ready, but daily send cap was reached." });
+      skippedNegotiations.push({ event_id: event.id, buyer_lead_id: lead.id, reason: "daily send cap reached" });
+      continue;
+    }
+
+    if (await isSuppressed(campaign.id, lead.id, lead.contact_email || outboundEmailRecipient())) {
+      skippedNegotiations.push({ event_id: event.id, buyer_lead_id: lead.id, reason: "suppressed" });
+      continue;
+    }
+
+    const draft = generateNegotiationReply(campaign, lead, event, policy);
+    const humanApprovalOnly = draft.should_escalate && !draft.should_request_deposit && event.classification !== "legal_concern";
+    if (humanApprovalOnly) {
+      await updateLead(lead.id, {
+        status: "escalated",
+        next_action: `${draft.next_action} Owner approval recommended before responding.`,
+      });
+      await addConversationEvent({
+        campaign_id: campaign.id,
+        buyer_lead_id: lead.id,
+        channel: "manual",
+        direction: "outbound",
+        body: `Agent paused: serious offer or sensitive negotiation requires owner approval before sending. Suggested response:\n\n${draft.body}`,
+        classification: "system_note",
+        offer_amount: event.offer_amount,
+        next_action: "Owner approval recommended.",
+      });
+      skippedNegotiations.push({ event_id: event.id, buyer_lead_id: lead.id, reason: "owner approval recommended" });
+      continue;
+    }
+
+    const response = await sendNegotiationResponse({ campaign, lead, policy, event });
+    agentResponses.push(response);
+    if (response.sent.message_id) sendsRemaining -= 1;
+  }
+
+  return { agentResponses, skippedNegotiations, sendsRemaining };
+}
+
 export async function runAgentTick(options: AgentTickOptions = {}) {
   const resolved = { ...defaultOptions(), ...options };
   const processedReplies = await pollAgentMailReplies();
-  const store = await loadStore();
+  let store = await loadStore();
+  const negotiationSendsRemaining = Math.max(
+    0,
+    resolved.maxDailyNegotiationSends - negotiationRepliesSentToday(store.outboundMessages),
+  );
+  const negotiationResult = await advanceNegotiations(store, resolved, negotiationSendsRemaining);
+  store = await loadStore();
   const followUps = [];
   const sentFollowUps = [];
   const skipped = [];
@@ -187,6 +401,8 @@ export async function runAgentTick(options: AgentTickOptions = {}) {
     followUps,
     sentFollowUps,
     skipped,
+    agentResponses: negotiationResult.agentResponses,
+    skippedNegotiations: negotiationResult.skippedNegotiations,
     recommendations,
     options: resolved,
     portfolio: {
