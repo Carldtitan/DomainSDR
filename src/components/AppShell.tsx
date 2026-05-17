@@ -56,21 +56,21 @@ export function AppShell({ campaign, active = "intake", children }: AppShellProp
             <nav className="flex flex-wrap gap-2">
               <Link className={navClass(active === "intake")} href="/">
                 <SquarePen size={16} />
-                Intake
+                Launch
               </Link>
               {campaign ? (
                 <>
                   <Link className={navClass(active === "research")} href={`${campaignBase}/research`}>
                     <Search size={16} />
-                    Research
+                    Buyers
                   </Link>
                   <Link className={navClass(active === "outreach")} href={`${campaignBase}/outreach`}>
                     <MailCheck size={16} />
-                    Outreach
+                    Drafts
                   </Link>
                   <Link className={navClass(active === "dashboard")} href={`${campaignBase}/dashboard`}>
                     <BarChart3 size={16} />
-                    Dashboard
+                    Console
                   </Link>
                 </>
               ) : null}

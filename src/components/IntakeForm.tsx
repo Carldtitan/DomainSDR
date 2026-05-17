@@ -28,7 +28,7 @@ export function IntakeForm({ campaigns }: { campaigns: DomainCampaign[] }) {
       setError(data.error || "Could not create campaign");
       return;
     }
-    router.push(`/campaign/${data.campaign.id}/research`);
+    router.push(`/campaign/${data.campaign.id}/dashboard`);
   }
 
   return (
@@ -36,8 +36,10 @@ export function IntakeForm({ campaigns }: { campaigns: DomainCampaign[] }) {
       <Panel>
         <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h1 className="text-2xl font-semibold text-white">New Domain Campaign</h1>
-            <p className="mt-1 text-sm text-slate-400">Set the domain, price guardrails, and agent permissions.</p>
+            <h1 className="text-2xl font-semibold text-white">Launch Domain Broker</h1>
+            <p className="mt-1 text-sm text-slate-400">
+              Once launched, the broker researches buyers, starts capped outreach, watches replies, and negotiates inside your rules.
+            </p>
           </div>
         </div>
 
@@ -45,7 +47,7 @@ export function IntakeForm({ campaigns }: { campaigns: DomainCampaign[] }) {
           <div className="rounded-md border border-white/10 bg-slate-950 p-4">
             <div className="mb-4 flex items-center justify-between gap-3">
               <div>
-                <h2 className="font-semibold text-white">1. Seller</h2>
+                <h2 className="font-semibold text-white">1. Domain Owner</h2>
                 <p className="mt-1 text-sm text-slate-500">Used for signatures, ownership proof, and owner escalation.</p>
               </div>
               <StatusBadge>required</StatusBadge>
@@ -97,8 +99,10 @@ export function IntakeForm({ campaigns }: { campaigns: DomainCampaign[] }) {
 
           <div className="rounded-md border border-white/10 bg-slate-950 p-4">
             <div className="mb-4">
-              <h2 className="font-semibold text-white">3. Agent Permissions</h2>
-              <p className="mt-1 text-sm text-slate-500">The broker can research, send a capped first batch, follow up once, and negotiate within these limits.</p>
+              <h2 className="font-semibold text-white">3. Broker Permissions</h2>
+              <p className="mt-1 text-sm text-slate-500">
+                The broker starts working immediately. These rules decide how far it can go without owner approval.
+              </p>
             </div>
             <div className="grid gap-3 text-sm text-slate-200 md:grid-cols-3">
               <label className="flex items-center gap-2 rounded-md border border-white/10 bg-white/5 p-3">
@@ -129,7 +133,7 @@ export function IntakeForm({ campaigns }: { campaigns: DomainCampaign[] }) {
 
           <button className={buttonClass} disabled={Boolean(pending)} type="submit">
             {pending === "campaign" ? <Loader2 className="animate-spin" size={16} /> : <Play size={16} />}
-            Start Campaign
+            {pending === "campaign" ? "Launching broker..." : "Launch Broker"}
           </button>
         </form>
       </Panel>

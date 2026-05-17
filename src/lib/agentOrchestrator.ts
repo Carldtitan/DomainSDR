@@ -23,6 +23,7 @@ import { startAgentPhoneCall } from "@/lib/agentPhoneService";
 import type { AppStore, BuyerLead, ConversationEvent, DomainCampaign, NegotiationPolicy, OutboundMessage } from "@/lib/types";
 
 type AgentTickOptions = {
+  campaignId?: string;
   discoverBuyers?: boolean;
   sendFirstTouch?: boolean;
   sendNegotiationReplies?: boolean;
@@ -59,6 +60,7 @@ function hoursBetween(value: string, now = new Date()) {
 
 function defaultOptions(): Required<AgentTickOptions> {
   return {
+    campaignId: "",
     discoverBuyers: process.env.AGENT_AUTOPILOT_RESEARCH !== "false",
     sendFirstTouch: process.env.AGENT_AUTOPILOT_FIRST_TOUCH_EMAILS !== "false",
     sendNegotiationReplies: process.env.AGENT_AUTOPILOT_NEGOTIATION_REPLIES !== "false",
@@ -77,11 +79,17 @@ function defaultOptions(): Required<AgentTickOptions> {
   };
 }
 
+function activeCampaigns(store: AppStore, campaignId = "") {
+  return store.campaigns.filter(
+    (item) => !["closed", "paused"].includes(item.status) && (!campaignId || item.id === campaignId),
+  );
+}
+
 async function researchCampaigns(store: AppStore, resolved: Required<AgentTickOptions>) {
   if (!resolved.discoverBuyers) return [];
   const researched = [];
 
-  for (const campaign of store.campaigns.filter((item) => !["closed", "paused"].includes(item.status))) {
+  for (const campaign of activeCampaigns(store, resolved.campaignId)) {
     const leadCount = store.buyerLeads.filter((lead) => lead.campaign_id === campaign.id).length;
     const recentlyResearched = hoursBetween(campaign.updated_at) < resolved.minHoursBetweenResearch;
     const shouldResearch =
@@ -107,9 +115,9 @@ async function researchCampaigns(store: AppStore, resolved: Required<AgentTickOp
   return researched;
 }
 
-async function prepareOutreachDrafts(store: AppStore, maxDrafts: number) {
+async function prepareOutreachDrafts(store: AppStore, maxDrafts: number, campaignId = "") {
   const drafted = [];
-  for (const campaign of store.campaigns.filter((item) => !["closed", "paused"].includes(item.status))) {
+  for (const campaign of activeCampaigns(store, campaignId)) {
     const existing = new Set(
       store.outboundMessages
         .filter((message) => message.campaign_id === campaign.id)
@@ -153,6 +161,7 @@ async function sendFirstTouchOutreach(store: AppStore, resolved: Required<AgentT
   const sentFirstTouch = [];
   const skippedFirstTouch = [];
   const drafts = store.outboundMessages
+    .filter((message) => !resolved.campaignId || message.campaign_id === resolved.campaignId)
     .filter((message) => message.status === "draft")
     .map((message) => ({
       message,
@@ -219,6 +228,7 @@ async function placeDuePhoneCalls(store: AppStore, resolved: Required<AgentTickO
 
   for (const lead of store.buyerLeads) {
     if (placedCalls.length >= resolved.maxCallsPerTick) break;
+    if (resolved.campaignId && lead.campaign_id !== resolved.campaignId) continue;
     if (!lead.contact_phone) continue;
     if (!["sent", "email_drafted"].includes(lead.status)) continue;
 
@@ -249,23 +259,29 @@ async function placeDuePhoneCalls(store: AppStore, resolved: Required<AgentTickO
   return { placedCalls, skippedCalls };
 }
 
-function sentToday(messages: OutboundMessage[]) {
-  const today = new Date().toISOString().slice(0, 10);
-  return messages.filter((message) => message.status === "sent" && message.sent_at?.slice(0, 10) === today).length;
-}
-
-function negotiationRepliesSentToday(messages: OutboundMessage[]) {
+function sentToday(messages: OutboundMessage[], campaignId = "") {
   const today = new Date().toISOString().slice(0, 10);
   return messages.filter(
     (message) =>
       message.status === "sent" &&
       message.sent_at?.slice(0, 10) === today &&
-      message.subject.toLowerCase().startsWith("re:"),
+      (!campaignId || message.campaign_id === campaignId),
   ).length;
 }
 
-function portfolioRecommendations(store: AppStore) {
-  return store.campaigns.map((campaign) => {
+function negotiationRepliesSentToday(messages: OutboundMessage[], campaignId = "") {
+  const today = new Date().toISOString().slice(0, 10);
+  return messages.filter(
+    (message) =>
+      message.status === "sent" &&
+      message.sent_at?.slice(0, 10) === today &&
+      message.subject.toLowerCase().startsWith("re:") &&
+      (!campaignId || message.campaign_id === campaignId),
+  ).length;
+}
+
+function portfolioRecommendations(store: AppStore, campaignId = "") {
+  return store.campaigns.filter((campaign) => !campaignId || campaign.id === campaignId).map((campaign) => {
     const leads = store.buyerLeads.filter((lead) => lead.campaign_id === campaign.id);
     const messages = store.outboundMessages.filter((message) => message.campaign_id === campaign.id);
     const inbound = store.conversationEvents.filter((event) => event.campaign_id === campaign.id && event.direction === "inbound");
@@ -319,9 +335,9 @@ function hasOutboundAfter(store: AppStore, event: ConversationEvent, lead: Buyer
   );
 }
 
-function pendingNegotiationEvents(store: AppStore) {
+function pendingNegotiationEvents(store: AppStore, campaignId = "") {
   return store.conversationEvents
-    .filter((event) => event.direction === "inbound")
+    .filter((event) => event.direction === "inbound" && (!campaignId || event.campaign_id === campaignId))
     .sort((a, b) => a.created_at.localeCompare(b.created_at))
     .filter((event) => {
       const currentLead = store.buyerLeads.find((lead) => lead.id === event.buyer_lead_id);
@@ -423,7 +439,7 @@ async function advanceNegotiations(store: AppStore, resolved: Required<AgentTick
   const agentResponses = [];
   const skippedNegotiations = [];
 
-  for (const event of pendingNegotiationEvents(store)) {
+  for (const event of pendingNegotiationEvents(store, resolved.campaignId)) {
     if (agentResponses.length >= resolved.maxNegotiationRepliesPerTick) {
       skippedNegotiations.push({ event_id: event.id, reason: "negotiation send cap reached" });
       continue;
@@ -497,24 +513,25 @@ export async function runAgentTick(options: AgentTickOptions = {}) {
   let store = await loadStore();
   const researchedCampaigns = await researchCampaigns(store, resolved);
   store = await loadStore();
-  const draftedOutreach = await prepareOutreachDrafts(store, resolved.maxDraftsPerTick);
+  const draftedOutreach = await prepareOutreachDrafts(store, resolved.maxDraftsPerTick, resolved.campaignId);
   store = await loadStore();
-  let sendsRemaining = Math.max(0, resolved.maxDailySends - sentToday(store.outboundMessages));
+  let sendsRemaining = Math.max(0, resolved.maxDailySends - sentToday(store.outboundMessages, resolved.campaignId));
   const firstTouchResult = await sendFirstTouchOutreach(store, resolved, sendsRemaining);
   sendsRemaining = firstTouchResult.sendsRemaining;
   store = await loadStore();
   const negotiationSendsRemaining = Math.max(
     0,
-    resolved.maxDailyNegotiationSends - negotiationRepliesSentToday(store.outboundMessages),
+    resolved.maxDailyNegotiationSends - negotiationRepliesSentToday(store.outboundMessages, resolved.campaignId),
   );
   const negotiationResult = await advanceNegotiations(store, resolved, negotiationSendsRemaining);
   store = await loadStore();
   const followUps = [];
   const sentFollowUps = [];
   const skipped = [];
-  const recommendations = portfolioRecommendations(store);
+  const recommendations = portfolioRecommendations(store, resolved.campaignId);
 
   for (const lead of store.buyerLeads) {
+    if (resolved.campaignId && lead.campaign_id !== resolved.campaignId) continue;
     if (["opted_out", "deposit_requested", "escalated"].includes(lead.status)) continue;
     const messages = store.outboundMessages.filter((message) => message.buyer_lead_id === lead.id && message.status === "sent");
     if (messages.length === 0) continue;

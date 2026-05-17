@@ -13,21 +13,23 @@ DomainSDR is an agentic domain broker MVP. It turns one owned domain into a low-
 - Supermemory for cross-campaign memory, learning, and workspace snapshots.
 - Stripe Checkout when `STRIPE_SECRET_KEY` is present; otherwise local mock checkout links.
 
-## Agent Loop
+## Broker Loop
 
-The broker loop is `POST /api/agent/tick`.
+Creating a campaign launches the broker immediately for that domain. The same broker loop is available at `POST /api/agent/tick` for scheduled wakes, reply webhooks, and manual overrides.
 
 Each tick:
 
 1. Polls AgentMail replies.
 2. Reconciles buyer identity from reply text and thread metadata.
-3. Drafts top outreach for leads that do not have a message yet.
-4. Advances unanswered inbound replies with a guarded negotiation response.
-5. Creates deposit links when a buyer asks how to buy or makes an acceptable offer.
-6. Sends one guarded follow-up to leads with no reply after the configured delay.
-7. Writes recommendations and a workspace snapshot to Supermemory.
+3. Researches and enriches buyers when the campaign needs more leads.
+4. Drafts top outreach for leads that do not have a message yet.
+5. Sends a small capped first-touch batch when policy allows.
+6. Advances unanswered inbound replies with a guarded negotiation response.
+7. Creates deposit links when a buyer asks how to buy or makes an acceptable offer.
+8. Sends one guarded follow-up to leads with no reply after the configured delay.
+9. Writes recommendations and a workspace snapshot to Supermemory.
 
-The app also runs a lightweight heartbeat every minute while a page is open, and `vercel.json` schedules `/api/agent/tick` hourly.
+The app also runs a lightweight heartbeat every minute while a page is open. `vercel.json` schedules `/api/agent/tick` daily on Vercel Hobby; use Vercel Pro or an external scheduler for hourly unattended wakes.
 
 ## Required Environment
 
@@ -130,10 +132,10 @@ After deployment, set `APP_BASE_URL` to the production URL and redeploy. The inc
 
 ## Key Routes
 
-- `/` domain intake
-- `/campaign/:id/research` buyer research
-- `/campaign/:id/outreach` email review/send
-- `/campaign/:id/dashboard` campaign dashboard
+- `/` broker launch
+- `/campaign/:id/research` buyer pipeline visibility
+- `/campaign/:id/outreach` draft queue override
+- `/campaign/:id/dashboard` broker console
 - `/campaign/:id/conversation/:leadId` negotiation thread
 - `/api/agent/tick` broker work loop
 - `/api/agentmail/webhook` realtime AgentMail reply webhook receiver
