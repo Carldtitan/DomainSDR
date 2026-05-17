@@ -93,12 +93,14 @@ export function OutreachReviewClient({ full, defaultRecipient }: { full: FullCam
       <Panel>
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div>
-            <h1 className="text-2xl font-semibold text-white">Outreach Review</h1>
-            <p className="mt-1 text-sm text-slate-400">Review or edit queued drafts. The broker also sends capped first-touch outreach when enabled.</p>
+            <h1 className="text-2xl font-semibold text-white">Draft Queue</h1>
+            <p className="mt-1 text-sm text-slate-400">
+              Manual override for broker drafts. The broker sends a capped first touch automatically when a lead is qualified and contactable.
+            </p>
           </div>
           <button className={buttonClass} disabled={pending === "send" || selected.size === 0} onClick={() => setConfirming(true)}>
             {pending === "send" ? <Loader2 className="animate-spin" size={16} /> : <Send size={16} />}
-            Send Selected
+            Send Selected Now
           </button>
         </div>
         {error ? <p className="mt-4 rounded-md border border-red-400/30 bg-red-500/10 px-3 py-2 text-sm text-red-200">{error}</p> : null}
@@ -175,7 +177,9 @@ export function OutreachReviewClient({ full, defaultRecipient }: { full: FullCam
         })}
         {full.messages.length === 0 ? (
           <Panel>
-            <p className="text-sm text-slate-400">No drafted emails yet. Generate emails from the Buyer Research page.</p>
+            <p className="text-sm text-slate-400">
+              No drafts yet. The broker creates drafts automatically after it finds qualified, contactable leads.
+            </p>
           </Panel>
         ) : null}
       </div>

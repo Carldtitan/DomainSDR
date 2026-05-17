@@ -3,9 +3,8 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Loader2, MailPlus, Search } from "lucide-react";
+import { Bot, Loader2, MailCheck, RefreshCw } from "lucide-react";
 import {
-  buttonClass,
   Panel,
   secondaryButtonClass,
   StatusBadge,
@@ -40,43 +39,53 @@ export function BuyerResearchClient({ full }: { full: FullCampaign }) {
       <Panel>
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div>
-            <h1 className="text-2xl font-semibold text-white">Buyer Research</h1>
+            <h1 className="text-2xl font-semibold text-white">Buyer Pipeline</h1>
             <p className="mt-1 text-sm font-medium text-cyan-100">{full.campaign.domain}</p>
             <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-300">
               {full.campaign.analysis?.positioning_statement || full.campaign.use_case_thesis}
             </p>
+            <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-400">
+              The broker owns this pipeline: it keeps the buyer list full, enriches contacts, drafts outreach, and starts a capped first touch.
+            </p>
           </div>
           <div className="flex flex-wrap gap-2">
             <button
-              className={buttonClass}
-              disabled={Boolean(pending)}
-              onClick={() => call(`/api/campaigns/${full.campaign.id}/buyers`)}
-            >
-              {pending?.includes("/buyers") ? <Loader2 className="animate-spin" size={16} /> : <Search size={16} />}
-              Find Buyers
-            </button>
-            <button
               className={secondaryButtonClass}
-              disabled={Boolean(pending) || full.leads.length === 0}
+              disabled={Boolean(pending)}
               onClick={() =>
-                call(`/api/campaigns/${full.campaign.id}/messages/generate`, { top: 5 }, `/campaign/${full.campaign.id}/outreach`)
+                call("/api/agent/tick", {
+                  campaignId: full.campaign.id,
+                  discoverBuyers: true,
+                  sendFirstTouch: true,
+                  sendNegotiationReplies: true,
+                  sendFollowUps: true,
+                  minHoursBetweenResearch: 0,
+                })
               }
             >
-              {pending?.includes("/messages") ? <Loader2 className="animate-spin" size={16} /> : <MailPlus size={16} />}
-              Generate Top 5
+              {pending === "/api/agent/tick" ? <Loader2 className="animate-spin" size={16} /> : <RefreshCw size={16} />}
+              Wake Broker
             </button>
+            <Link className={secondaryButtonClass} href={`/campaign/${full.campaign.id}/outreach`}>
+              <MailCheck size={16} />
+              Draft Queue
+            </Link>
           </div>
         </div>
 
         <div className="mt-5 grid gap-3 md:grid-cols-3">
           {[
-            ["1", "Find public buyers"],
-            ["2", "Score fit and contactability"],
-            ["3", "Draft reviewed emails"],
-          ].map(([step, label]) => (
-            <div key={step} className="rounded-md border border-white/10 bg-slate-950 p-3">
-              <span className="text-xs font-semibold text-cyan-200">Step {step}</span>
+            ["Find public buyers", "Search for companies with a clear reason to care about this exact domain."],
+            ["Enrich contacts", "Prefer public emails, contact forms, founders, growth leads, and public phone numbers."],
+            ["Advance outreach", "Draft and send a small first batch, then follow up once if there is no reply."],
+          ].map(([label, description]) => (
+            <div key={label} className="rounded-md border border-white/10 bg-slate-950 p-3">
+              <span className="inline-flex items-center gap-2 text-xs font-semibold text-cyan-200">
+                <Bot size={14} />
+                Broker job
+              </span>
               <p className="mt-1 text-sm text-slate-200">{label}</p>
+              <p className="mt-1 text-xs leading-5 text-slate-500">{description}</p>
             </div>
           ))}
         </div>
@@ -164,7 +173,7 @@ export function BuyerResearchClient({ full }: { full: FullCampaign }) {
                         disabled={Boolean(pending)}
                         onClick={() => call(`/api/campaigns/${full.campaign.id}/messages/generate`, { leadId: lead.id })}
                       >
-                        Email
+                        Draft Override
                       </button>
                       <Link className={secondaryButtonClass} href={`/campaign/${full.campaign.id}/conversation/${lead.id}`}>
                         Thread
@@ -176,7 +185,7 @@ export function BuyerResearchClient({ full }: { full: FullCampaign }) {
               {full.leads.length === 0 ? (
                 <tr>
                   <td colSpan={8} className="py-10 text-center text-slate-400">
-                    No leads yet. Click Find Buyers or wake the broker; it will search, score, and enrich buyers.
+                    No leads yet. The broker starts buyer research when a campaign launches and wakes again from the console, replies, or scheduled checks.
                   </td>
                 </tr>
               ) : null}

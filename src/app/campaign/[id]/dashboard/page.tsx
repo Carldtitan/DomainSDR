@@ -63,7 +63,7 @@ export default async function DashboardPage({ params }: { params: Promise<{ id: 
                 Current broker move: {agentRecommendation(full)}
               </p>
             </div>
-            <DashboardActions />
+            <DashboardActions campaignId={full.campaign.id} />
           </div>
         </Panel>
 

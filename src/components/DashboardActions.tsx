@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { Bot, Inbox, Loader2 } from "lucide-react";
 import { secondaryButtonClass } from "@/components/AppShell";
 
-export function DashboardActions() {
+export function DashboardActions({ campaignId }: { campaignId: string }) {
   const router = useRouter();
   const [pending, setPending] = useState(false);
   const [message, setMessage] = useState("");
@@ -27,6 +27,7 @@ export function DashboardActions() {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
+        campaignId,
         sendFollowUps: true,
         sendNegotiationReplies: true,
         sendFirstTouch: true,

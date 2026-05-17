@@ -1,6 +1,9 @@
 import { createCampaign } from "@/lib/campaignStore";
+import { runAgentTick } from "@/lib/agentOrchestrator";
 import { analyzeDomain } from "@/lib/llmService";
 import { saveToSupermemory } from "@/lib/supermemoryService";
+
+export const maxDuration = 60;
 
 function numberValue(value: unknown, fallback = 0) {
   const parsed = Number(value);
@@ -49,5 +52,26 @@ export async function POST(request: Request) {
     content: JSON.stringify({ campaign, analysis }, null, 2),
   });
 
-  return Response.json({ campaign });
+  let broker = null;
+  let brokerError = "";
+  try {
+    broker = await runAgentTick({
+      campaignId: campaign.id,
+      discoverBuyers: true,
+      sendFirstTouch: true,
+      sendNegotiationReplies: true,
+      sendFollowUps: true,
+      makePhoneCalls: false,
+      minLeadsPerCampaign: 5,
+      minHoursBetweenResearch: 0,
+      maxDraftsPerTick: 5,
+      maxFirstTouchSendsPerTick: 2,
+      maxFollowUpsPerTick: 1,
+    });
+  } catch (error) {
+    brokerError = error instanceof Error ? error.message : "Broker launch failed";
+    console.error("Broker launch failed", error);
+  }
+
+  return Response.json({ campaign, broker, brokerError });
 }
