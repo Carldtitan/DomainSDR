@@ -383,6 +383,99 @@ The product is weaker if it becomes:
 - A domain marketplace without transfer infrastructure.
 - A tool where the owner still clicks through every step.
 
+## Call My Agent Hackathon Context
+
+The target hackathon is Call My Agent Hackathon at Y Combinator in San Francisco on May 17, 2026.
+
+The hackathon theme is not "build another SaaS dashboard." The theme is agents that act in the real world through phone, SMS, email, browsing, payments, and memory.
+
+Sponsor/tool relevance:
+
+- AgentPhone: voice agent infrastructure and the strongest fit for the hackathon theme.
+- AgentMail: inbox agent infrastructure for sending, receiving, replying, and following up.
+- Supermemory: long-term agent memory and context across campaigns.
+- Stripe: agentic payments and deposit collection.
+- Browser Use: browser automation if the broker needs to inspect marketplaces, forms, or registrar/escrow workflows.
+- Google DeepMind/Gemini: reasoning, scoring, messaging, and negotiation policy.
+
+Track fit for DomainSDR:
+
+- "Inbox warriors" because the agent sends, receives, classifies, and follows up on emails.
+- "The negotiator" because the agent haggles inside seller rules and requests deposits.
+- "The fixer" if the demo combines email, phone, SMS, browsing, memory, and Stripe.
+- "Wildcard" if positioned as a broker agent that turns an illiquid asset into a real-world sales process.
+
+## Honest SaaS vs Agent Assessment
+
+DomainSDR is currently a hybrid.
+
+It has an agent backend:
+
+- It wakes on campaign launch.
+- It researches buyers.
+- It enriches contacts.
+- It sends limited first-touch outreach.
+- It watches AgentMail replies.
+- It classifies and negotiates.
+- It follows up.
+- It requests Stripe deposits.
+- It stores memory in Supermemory.
+
+But it still risks looking like SaaS because:
+
+- The primary visible surface is still a web dashboard.
+- The user can still inspect tables, queues, and campaign pages.
+- AgentPhone is configured but not the center of the experience.
+- Outbound calls are disabled by default.
+- The best demo path still needs a human to explain what the broker is doing.
+
+The honest answer: it is not just a SaaS product anymore, but judges could still perceive it as SaaS unless the demo leads with the agent acting through real channels.
+
+The winning demo should not be "look at this dashboard." It should be:
+
+1. Owner launches a domain broker.
+2. Agent finds buyers and starts outreach without the owner clicking research buttons.
+3. A buyer replies or calls.
+4. The agent answers live using campaign memory and seller rules.
+5. The agent negotiates safely.
+6. The agent texts or emails a Stripe deposit link.
+7. Stripe payment updates the campaign automatically.
+8. The dashboard is only the audit trail after the agent has acted.
+
+## Recommended Hackathon Pivot
+
+To fit the hackathon better, the product should be positioned as:
+
+- "Call my domain broker."
+
+The strongest demo flow:
+
+1. Seller creates a campaign for a domain.
+2. The broker starts researching and emailing buyers.
+3. A controlled buyer calls the AgentPhone number.
+4. The voice agent says it represents the domain owner, answers what the domain is for, gives price guidance, and handles proof-of-ownership questions.
+5. If the buyer makes a valid offer, the agent follows seller policy.
+6. If the buyer asks for next steps, the agent sends an SMS/email with a Stripe deposit link and escrow/marketplace transfer instructions.
+7. Supermemory remembers the buyer objection and conversation.
+8. The console updates automatically.
+
+What should be de-emphasized:
+
+- Tables.
+- Manual buttons.
+- "Generate email" language.
+- Tool implementation details.
+- Hackathon buzzwords inside the product UI.
+
+What should be emphasized:
+
+- The agent waking up.
+- The agent calling, emailing, texting, and negotiating.
+- The agent obeying hard rules.
+- The agent remembering.
+- The agent asking for payment/deposit.
+- The agent escalating serious or risky cases.
+
 ## Integration and Partnership Opportunities
 
 The app should avoid reinventing:
@@ -398,7 +491,7 @@ The app should avoid reinventing:
 Latest production deployment:
 
 - Production URL: `https://domainsdr.vercel.app`
-- Latest pushed commit at the time of this file: `68300ef Make campaign launch broker autonomously`
+- Latest pushed implementation commit before this conversation note: `bea3615 Add conversation product history readme`
 - Production health after that deploy showed:
   - Gemini configured.
   - Apify configured.
