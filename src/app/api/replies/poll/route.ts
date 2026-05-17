@@ -1,6 +1,9 @@
-import { pollAgentMailReplies } from "@/lib/agentMailService";
+import { runAgentTick } from "@/lib/agentOrchestrator";
 
 export async function POST() {
-  const events = await pollAgentMailReplies();
-  return Response.json({ events });
+  const result = await runAgentTick({
+    sendNegotiationReplies: true,
+    sendFollowUps: false,
+  });
+  return Response.json(result);
 }

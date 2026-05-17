@@ -107,6 +107,21 @@ ${signature(campaign)}`,
   }
 
   if (replyClass === "asks_price" || (!amount && replyClass === "interested")) {
+    const buyerWantsNextStep = /\b(buy|purchase|move forward|go ahead|send (the )?link|checkout|invoice|pay|deposit)\b/i.test(replyBody);
+    if (buyerWantsNextStep) {
+      return {
+        body: `Thanks. The ask for ${campaign.domain} is ${money(policy.ask_price)}.
+
+If ${company} wants to move forward, I can send a ${money(policy.deposit_amount)} deposit link to confirm intent while we use escrow or a trusted marketplace for transfer.
+
+${signature(campaign)}`,
+        next_action: "Buyer asked how to buy; send ask price and deposit link.",
+        should_request_deposit: true,
+        accepted_amount: policy.ask_price,
+        should_escalate: policy.ask_price >= policy.escalation_threshold,
+      };
+    }
+
     return {
       body: `Thanks. The ask for ${campaign.domain} is ${money(policy.ask_price)}.
 

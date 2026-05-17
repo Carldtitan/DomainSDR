@@ -32,7 +32,13 @@ export function ConversationClient({
   const [pending, setPending] = useState<string | null>(null);
   const [error, setError] = useState("");
   const latestInbound = useMemo(
-    () => [...events].reverse().find((event) => event.direction === "inbound" && Boolean(event.suggested_response)),
+    () =>
+      [...events].reverse().find(
+        (event) =>
+          event.direction === "inbound" &&
+          Boolean(event.suggested_response) &&
+          !events.some((candidate) => candidate.direction === "outbound" && candidate.created_at > event.created_at),
+      ),
     [events],
   );
   async function post(path: string, payload?: unknown) {

@@ -15,7 +15,9 @@ export function DashboardActions() {
     const response = await fetch("/api/replies/poll", { method: "POST" });
     const data = await response.json().catch(() => ({}));
     setPending(false);
-    setMessage(`${data.events?.length || 0} new repl${data.events?.length === 1 ? "y" : "ies"} processed.`);
+    setMessage(
+      `${data.processedReplies?.length || 0} repl${data.processedReplies?.length === 1 ? "y" : "ies"} processed, ${data.agentResponses?.length || 0} agent response(s) sent.`,
+    );
     router.refresh();
   }
 
@@ -26,6 +28,7 @@ export function DashboardActions() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         sendFollowUps: true,
+        sendNegotiationReplies: true,
         minHoursSinceLastSend: 0,
         maxFollowUpsPerTick: 3,
       }),
@@ -33,7 +36,7 @@ export function DashboardActions() {
     const data = await response.json().catch(() => ({}));
     setPending(false);
     setMessage(
-      `${data.processedReplies?.length || 0} replies processed, ${data.sentFollowUps?.length || 0} follow-up(s) sent, ${data.followUps?.length || 0} due.`,
+      `${data.processedReplies?.length || 0} replies processed, ${data.agentResponses?.length || 0} agent response(s) sent, ${data.sentFollowUps?.length || 0} follow-up(s) sent.`,
     );
     router.refresh();
   }
