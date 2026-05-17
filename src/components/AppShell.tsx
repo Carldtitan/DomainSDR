@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { BarChart3, MailCheck, Search, ShieldCheck, SquarePen } from "lucide-react";
+import { BarChart3, Bot, MailCheck, Search, ShieldCheck, SquarePen } from "lucide-react";
 import type { DomainCampaign } from "@/lib/types";
 import { money } from "@/lib/format";
 import { AgentHeartbeat } from "@/components/AgentHeartbeat";
@@ -52,28 +52,34 @@ export function AppShell({ campaign, active = "intake", children }: AppShellProp
             ) : null}
           </div>
 
-          <nav className="flex flex-wrap gap-2">
-            <Link className={navClass(active === "intake")} href="/">
-              <SquarePen size={16} />
-              Intake
-            </Link>
-            {campaign ? (
-              <>
-                <Link className={navClass(active === "research")} href={`${campaignBase}/research`}>
-                  <Search size={16} />
-                  Research
-                </Link>
-                <Link className={navClass(active === "outreach")} href={`${campaignBase}/outreach`}>
-                  <MailCheck size={16} />
-                  Outreach
-                </Link>
-                <Link className={navClass(active === "dashboard")} href={`${campaignBase}/dashboard`}>
-                  <BarChart3 size={16} />
-                  Dashboard
-                </Link>
-              </>
-            ) : null}
-          </nav>
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <nav className="flex flex-wrap gap-2">
+              <Link className={navClass(active === "intake")} href="/">
+                <SquarePen size={16} />
+                Intake
+              </Link>
+              {campaign ? (
+                <>
+                  <Link className={navClass(active === "research")} href={`${campaignBase}/research`}>
+                    <Search size={16} />
+                    Research
+                  </Link>
+                  <Link className={navClass(active === "outreach")} href={`${campaignBase}/outreach`}>
+                    <MailCheck size={16} />
+                    Outreach
+                  </Link>
+                  <Link className={navClass(active === "dashboard")} href={`${campaignBase}/dashboard`}>
+                    <BarChart3 size={16} />
+                    Dashboard
+                  </Link>
+                </>
+              ) : null}
+            </nav>
+            <div className="inline-flex w-fit items-center gap-2 rounded-md border border-emerald-300/20 bg-emerald-300/10 px-3 py-2 text-xs font-medium text-emerald-100">
+              <Bot size={14} />
+              Agent loop checks replies, drafts next steps, and sends guarded follow-ups
+            </div>
+          </div>
         </div>
       </header>
 

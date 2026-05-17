@@ -1,4 +1,5 @@
 import Database from "better-sqlite3";
+import { neon } from "@neondatabase/serverless";
 import { mkdirSync } from "node:fs";
 import path from "node:path";
 import type {
@@ -15,11 +16,35 @@ import type {
 } from "@/lib/types";
 import { normalizeDomain } from "@/lib/format";
 
-const storeDir = path.join(process.cwd(), ".data");
+const storeDir = process.env.VERCEL && !process.env.DATABASE_URL
+  ? path.join("/tmp", "domainsdr")
+  : path.join(process.cwd(), ".data");
 const dbPath = path.join(storeDir, "domain-sdr.sqlite");
 
 let db: Database.Database | null = null;
+let pgSql: ReturnType<typeof neon> | null = null;
+let pgSchemaReady = false;
 let writeQueue = Promise.resolve();
+
+function hasPostgresUrl() {
+  return Boolean(process.env.DATABASE_URL);
+}
+
+export function storageBackend() {
+  if (hasPostgresUrl()) return "postgres";
+  if (process.env.VERCEL) return "ephemeral-sqlite";
+  return "sqlite";
+}
+
+function getPgSql() {
+  if (!process.env.DATABASE_URL) {
+    throw new Error("DATABASE_URL is required for hosted Postgres storage");
+  }
+  if (!pgSql) {
+    pgSql = neon(process.env.DATABASE_URL);
+  }
+  return pgSql;
+}
 
 function ensureColumn(database: Database.Database, table: string, column: string, ddl: string) {
   const columns = database.prepare(`pragma table_info(${table})`).all() as { name: string }[];
@@ -137,11 +162,148 @@ function parseRows<T>(table: string) {
     .map((row) => JSON.parse((row as { data: string }).data) as T);
 }
 
+function parseJsonCell<T>(value: unknown) {
+  if (typeof value === "string") return JSON.parse(value) as T;
+  return value as T;
+}
+
+async function ensurePostgresSchema() {
+  if (pgSchemaReady) return;
+  const sql = getPgSql();
+
+  await sql.transaction([
+    sql`
+      create table if not exists campaigns (
+        id text primary key,
+        created_at text not null,
+        updated_at text not null,
+        data jsonb not null
+      )
+    `,
+    sql`
+      create table if not exists buyer_leads (
+        id text primary key,
+        campaign_id text not null,
+        company_name text not null,
+        website text not null,
+        contact_email text,
+        status text not null,
+        fit_score integer not null,
+        created_at text not null,
+        updated_at text not null,
+        data jsonb not null
+      )
+    `,
+    sql`
+      create table if not exists outbound_messages (
+        id text primary key,
+        campaign_id text not null,
+        buyer_lead_id text not null,
+        status text not null,
+        to_email text,
+        agentmail_message_id text,
+        agentmail_thread_id text,
+        sent_at text,
+        created_at text not null,
+        updated_at text not null,
+        data jsonb not null
+      )
+    `,
+    sql`
+      create table if not exists conversation_events (
+        id text primary key,
+        campaign_id text not null,
+        buyer_lead_id text not null,
+        direction text not null,
+        channel text not null,
+        classification text not null,
+        offer_amount real,
+        agentmail_message_id text,
+        agentmail_thread_id text,
+        created_at text not null,
+        data jsonb not null
+      )
+    `,
+    sql`
+      create table if not exists negotiation_policies (
+        campaign_id text primary key,
+        data jsonb not null
+      )
+    `,
+    sql`
+      create table if not exists offers (
+        id text primary key,
+        campaign_id text not null,
+        buyer_lead_id text not null,
+        amount real not null,
+        status text not null,
+        created_at text not null,
+        updated_at text not null,
+        data jsonb not null
+      )
+    `,
+    sql`
+      create table if not exists suppressions (
+        id text primary key,
+        campaign_id text not null,
+        buyer_lead_id text,
+        email text,
+        created_at text not null,
+        data jsonb not null
+      )
+    `,
+    sql`
+      create table if not exists processed_agentmail_messages (
+        message_id text primary key
+      )
+    `,
+    sql`
+      create table if not exists processed_webhook_events (
+        event_id text primary key
+      )
+    `,
+    sql`create index if not exists idx_buyer_leads_campaign on buyer_leads(campaign_id)`,
+    sql`create index if not exists idx_outbound_campaign on outbound_messages(campaign_id)`,
+    sql`create index if not exists idx_outbound_agentmail_message on outbound_messages(agentmail_message_id)`,
+    sql`create index if not exists idx_outbound_agentmail_thread on outbound_messages(agentmail_thread_id)`,
+    sql`create index if not exists idx_events_campaign on conversation_events(campaign_id)`,
+    sql`create index if not exists idx_events_agentmail_message on conversation_events(agentmail_message_id)`,
+    sql`create index if not exists idx_events_agentmail_thread on conversation_events(agentmail_thread_id)`,
+    sql`create index if not exists idx_suppressions_email on suppressions(email)`,
+  ]);
+
+  pgSchemaReady = true;
+}
+
+async function parsePostgresRows<T>(table: string) {
+  const rows = await getPgSql().query(`select data from ${table}`);
+  return (rows as { data: unknown }[]).map((row) => parseJsonCell<T>(row.data));
+}
+
 export function newId(prefix: string) {
   return `${prefix}_${crypto.randomUUID().slice(0, 8)}`;
 }
 
 export async function loadStore(): Promise<AppStore> {
+  if (hasPostgresUrl()) {
+    await ensurePostgresSchema();
+    const sql = getPgSql();
+    const processedMessages = (await sql`select message_id from processed_agentmail_messages`) as { message_id: string }[];
+    const processedWebhooks = (await sql`select event_id from processed_webhook_events`) as { event_id: string }[];
+
+    return {
+      campaigns: await parsePostgresRows<DomainCampaign>("campaigns"),
+      buyerLeads: await parsePostgresRows<BuyerLead>("buyer_leads"),
+      outboundMessages: await parsePostgresRows<OutboundMessage>("outbound_messages"),
+      conversationEvents: await parsePostgresRows<ConversationEvent>("conversation_events"),
+      negotiationPolicies: await parsePostgresRows<NegotiationPolicy>("negotiation_policies"),
+      offers: await parsePostgresRows<Offer>("offers"),
+      suppressions: await parsePostgresRows<SuppressionRecord>("suppressions"),
+      processedAgentmailMessageIds: processedMessages.map((row) => row.message_id),
+      processedWebhookEventIds: processedWebhooks.map((row) => row.event_id),
+    };
+  }
+
   return {
     campaigns: parseRows<DomainCampaign>("campaigns"),
     buyerLeads: parseRows<BuyerLead>("buyer_leads"),
@@ -260,6 +422,130 @@ const replaceStoreTx = () =>
   });
 
 async function saveStore(store: AppStore) {
+  if (hasPostgresUrl()) {
+    await ensurePostgresSchema();
+    const sql = getPgSql();
+    const queries = [
+      sql`delete from campaigns`,
+      sql`delete from buyer_leads`,
+      sql`delete from outbound_messages`,
+      sql`delete from conversation_events`,
+      sql`delete from negotiation_policies`,
+      sql`delete from offers`,
+      sql`delete from suppressions`,
+      sql`delete from processed_agentmail_messages`,
+      sql`delete from processed_webhook_events`,
+    ];
+
+    for (const item of store.campaigns) {
+      queries.push(sql`
+        insert into campaigns (id, created_at, updated_at, data)
+        values (${item.id}, ${item.created_at}, ${item.updated_at}, ${JSON.stringify(item)}::jsonb)
+      `);
+    }
+    for (const item of store.buyerLeads) {
+      queries.push(sql`
+        insert into buyer_leads
+        (id, campaign_id, company_name, website, contact_email, status, fit_score, created_at, updated_at, data)
+        values (
+          ${item.id},
+          ${item.campaign_id},
+          ${item.company_name},
+          ${item.website},
+          ${item.contact_email || null},
+          ${item.status},
+          ${item.fit_score},
+          ${item.created_at},
+          ${item.updated_at},
+          ${JSON.stringify(item)}::jsonb
+        )
+      `);
+    }
+    for (const item of store.outboundMessages) {
+      queries.push(sql`
+        insert into outbound_messages
+        (id, campaign_id, buyer_lead_id, status, to_email, agentmail_message_id, agentmail_thread_id, sent_at, created_at, updated_at, data)
+        values (
+          ${item.id},
+          ${item.campaign_id},
+          ${item.buyer_lead_id},
+          ${item.status},
+          ${item.to_email || null},
+          ${item.agentmail_message_id || null},
+          ${item.agentmail_thread_id || null},
+          ${item.sent_at || null},
+          ${item.created_at},
+          ${item.updated_at},
+          ${JSON.stringify(item)}::jsonb
+        )
+      `);
+    }
+    for (const item of store.conversationEvents) {
+      queries.push(sql`
+        insert into conversation_events
+        (id, campaign_id, buyer_lead_id, direction, channel, classification, offer_amount, agentmail_message_id, agentmail_thread_id, created_at, data)
+        values (
+          ${item.id},
+          ${item.campaign_id},
+          ${item.buyer_lead_id},
+          ${item.direction},
+          ${item.channel},
+          ${item.classification},
+          ${item.offer_amount ?? null},
+          ${item.agentmail_message_id || null},
+          ${item.agentmail_thread_id || null},
+          ${item.created_at},
+          ${JSON.stringify(item)}::jsonb
+        )
+      `);
+    }
+    for (const item of store.negotiationPolicies) {
+      queries.push(sql`
+        insert into negotiation_policies (campaign_id, data)
+        values (${item.campaign_id}, ${JSON.stringify(item)}::jsonb)
+      `);
+    }
+    for (const item of store.offers) {
+      queries.push(sql`
+        insert into offers
+        (id, campaign_id, buyer_lead_id, amount, status, created_at, updated_at, data)
+        values (
+          ${item.id},
+          ${item.campaign_id},
+          ${item.buyer_lead_id},
+          ${item.amount},
+          ${item.status},
+          ${item.created_at},
+          ${item.updated_at},
+          ${JSON.stringify(item)}::jsonb
+        )
+      `);
+    }
+    for (const item of store.suppressions) {
+      queries.push(sql`
+        insert into suppressions
+        (id, campaign_id, buyer_lead_id, email, created_at, data)
+        values (
+          ${item.id},
+          ${item.campaign_id},
+          ${item.buyer_lead_id || null},
+          ${item.email || null},
+          ${item.created_at},
+          ${JSON.stringify(item)}::jsonb
+        )
+      `);
+    }
+    for (const messageId of store.processedAgentmailMessageIds) {
+      queries.push(sql`insert into processed_agentmail_messages (message_id) values (${messageId})`);
+    }
+    for (const eventId of store.processedWebhookEventIds || []) {
+      queries.push(sql`insert into processed_webhook_events (event_id) values (${eventId})`);
+    }
+
+    await sql.transaction(queries);
+    return;
+  }
+
   replaceStoreTx()(store);
 }
 
