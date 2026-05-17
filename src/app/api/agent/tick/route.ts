@@ -1,0 +1,21 @@
+import { runAgentTick } from "@/lib/agentOrchestrator";
+
+export async function POST(request: Request) {
+  const body = (await request.json().catch(() => ({}))) as {
+    sendFollowUps?: boolean;
+    minHoursSinceLastSend?: number;
+    maxFollowUpsPerTick?: number;
+  };
+  const result = await runAgentTick(body);
+  return Response.json(result);
+}
+
+export async function GET(request: Request) {
+  const cronSecret = process.env.CRON_SECRET;
+  if (cronSecret && request.headers.get("authorization") !== `Bearer ${cronSecret}`) {
+    return new Response("Unauthorized", { status: 401 });
+  }
+
+  const result = await runAgentTick();
+  return Response.json(result);
+}
