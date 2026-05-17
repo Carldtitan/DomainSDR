@@ -145,11 +145,14 @@ export function BuyerResearchClient({ full }: { full: FullCampaign }) {
                   <td className="max-w-md border-b border-white/5 py-4 pr-4 text-slate-300">{lead.reason_fit}</td>
                   <td className="max-w-xs border-b border-white/5 py-4 pr-4 text-slate-400">{lead.current_domain_weakness}</td>
                   <td className="border-b border-white/5 py-4 pr-4 text-slate-300">
-                    {lead.contact_email || (
-                      <a href={lead.contact_url} target="_blank" rel="noreferrer" className="text-cyan-200">
-                        Contact page
-                      </a>
-                    )}
+                    <span className="block">
+                      {lead.contact_email || (
+                        <a href={lead.contact_url} target="_blank" rel="noreferrer" className="text-cyan-200">
+                          Contact page
+                        </a>
+                      )}
+                    </span>
+                    <span className="mt-1 block text-xs text-slate-500">{lead.contact_phone || "No public phone"}</span>
                   </td>
                   <td className="border-b border-white/5 py-4 pr-4">
                     <StatusBadge>{lead.status.replaceAll("_", " ")}</StatusBadge>
@@ -173,7 +176,7 @@ export function BuyerResearchClient({ full }: { full: FullCampaign }) {
               {full.leads.length === 0 ? (
                 <tr>
                   <td colSpan={8} className="py-10 text-center text-slate-400">
-                    No leads yet. Click Find Buyers to run Apify research and Gemini scoring.
+                    No leads yet. Click Find Buyers or wake the broker; it will search, score, and enrich buyers.
                   </td>
                 </tr>
               ) : null}

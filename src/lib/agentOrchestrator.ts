@@ -1,4 +1,5 @@
 import { pollAgentMailReplies, replyWithAgentMail, sendEmailWithAgentMail } from "@/lib/agentMailService";
+import { discoverBuyers } from "@/lib/apifyService";
 import {
   addConversationEvent,
   addOrUpdateOutboundMessage,
@@ -6,24 +7,35 @@ import {
   addSuppression,
   isSuppressed,
   loadStore,
+  updateCampaign,
   updateConversationEvent,
   updateLead,
+  updateOutboundMessage,
+  upsertLeads,
 } from "@/lib/campaignStore";
 import { outboundEmailRecipient } from "@/lib/contactRouting";
-import { generateFollowUpEmail, generateOutboundEmail } from "@/lib/llmService";
+import { analyzeDomain, generateFollowUpEmail, generateOutboundEmail } from "@/lib/llmService";
 import { generateNegotiationReply } from "@/lib/negotiationEngine";
 import { createDepositLink } from "@/lib/paymentService";
 import { reconcileLeadFromReplyBody } from "@/lib/leadIdentity";
 import { saveToSupermemory, saveWorkspaceSnapshot } from "@/lib/supermemoryService";
+import { startAgentPhoneCall } from "@/lib/agentPhoneService";
 import type { AppStore, BuyerLead, ConversationEvent, DomainCampaign, NegotiationPolicy, OutboundMessage } from "@/lib/types";
 
 type AgentTickOptions = {
+  discoverBuyers?: boolean;
+  sendFirstTouch?: boolean;
   sendNegotiationReplies?: boolean;
   sendFollowUps?: boolean;
+  makePhoneCalls?: boolean;
   minHoursSinceLastSend?: number;
+  minHoursBetweenResearch?: number;
+  minLeadsPerCampaign?: number;
   maxNegotiationRepliesPerTick?: number;
   maxDraftsPerTick?: number;
+  maxFirstTouchSendsPerTick?: number;
   maxFollowUpsPerTick?: number;
+  maxCallsPerTick?: number;
   maxDailyNegotiationSends?: number;
   maxDailySends?: number;
 };
@@ -47,15 +59,52 @@ function hoursBetween(value: string, now = new Date()) {
 
 function defaultOptions(): Required<AgentTickOptions> {
   return {
+    discoverBuyers: process.env.AGENT_AUTOPILOT_RESEARCH !== "false",
+    sendFirstTouch: process.env.AGENT_AUTOPILOT_FIRST_TOUCH_EMAILS !== "false",
     sendNegotiationReplies: process.env.AGENT_AUTOPILOT_NEGOTIATION_REPLIES !== "false",
     sendFollowUps: process.env.AGENT_AUTOPILOT_FOLLOWUPS !== "false",
+    makePhoneCalls: process.env.AGENT_AUTOPILOT_CALLS === "true",
     minHoursSinceLastSend: Number(process.env.AGENT_FOLLOWUP_MIN_HOURS || 72),
+    minHoursBetweenResearch: Number(process.env.AGENT_RESEARCH_MIN_HOURS || 6),
+    minLeadsPerCampaign: Number(process.env.AGENT_MIN_LEADS_PER_CAMPAIGN || 8),
     maxNegotiationRepliesPerTick: Number(process.env.AGENT_NEGOTIATION_MAX_SENDS_PER_TICK || 5),
     maxDraftsPerTick: Number(process.env.AGENT_MAX_DRAFTS_PER_TICK || 5),
+    maxFirstTouchSendsPerTick: Number(process.env.AGENT_FIRST_TOUCH_MAX_SENDS_PER_TICK || 2),
     maxFollowUpsPerTick: Number(process.env.AGENT_FOLLOWUP_MAX_SENDS_PER_TICK || 3),
+    maxCallsPerTick: Number(process.env.AGENT_CALL_MAX_PER_TICK || 1),
     maxDailyNegotiationSends: Number(process.env.AGENT_NEGOTIATION_MAX_DAILY_SENDS || 20),
     maxDailySends: Number(process.env.AGENT_FOLLOWUP_MAX_DAILY_SENDS || 5),
   };
+}
+
+async function researchCampaigns(store: AppStore, resolved: Required<AgentTickOptions>) {
+  if (!resolved.discoverBuyers) return [];
+  const researched = [];
+
+  for (const campaign of store.campaigns.filter((item) => !["closed", "paused"].includes(item.status))) {
+    const leadCount = store.buyerLeads.filter((lead) => lead.campaign_id === campaign.id).length;
+    const recentlyResearched = hoursBetween(campaign.updated_at) < resolved.minHoursBetweenResearch;
+    const shouldResearch =
+      leadCount === 0 ||
+      (leadCount < resolved.minLeadsPerCampaign && !recentlyResearched && !["deposit_requested", "negotiating"].includes(campaign.status));
+
+    if (!shouldResearch) continue;
+
+    await updateCampaign(campaign.id, { status: "researching" });
+    const analysis = campaign.analysis || (await analyzeDomain(campaign.domain, campaign.use_case_thesis));
+    if (!campaign.analysis) await updateCampaign(campaign.id, { analysis });
+    const discovered = await discoverBuyers(campaign, analysis);
+    const leads = await upsertLeads(campaign.id, discovered);
+    await saveToSupermemory({
+      campaignId: campaign.id,
+      type: "agent_buyer_research",
+      content: JSON.stringify({ analysis, leads }, null, 2),
+    });
+    researched.push({ campaign_id: campaign.id, domain: campaign.domain, leads_found: leads.length });
+    break;
+  }
+
+  return researched;
 }
 
 async function prepareOutreachDrafts(store: AppStore, maxDrafts: number) {
@@ -85,17 +134,119 @@ async function prepareOutreachDrafts(store: AppStore, maxDrafts: number) {
         subject: generated.subject,
         body: generated.body,
         status: "draft",
-        to_email: outboundEmailRecipient(),
+        to_email: outboundEmailRecipient(lead.contact_email),
       });
       await updateLead(lead.id, {
         status: "email_drafted",
-        next_action: "Agent drafted outbound; awaiting send approval.",
+        next_action: "Outbound drafted; broker can send under campaign guardrails.",
       });
       drafted.push({ campaign_id: campaign.id, buyer_lead_id: lead.id, company_name: lead.company_name, message_id: message.id });
       if (drafted.length >= maxDrafts) return drafted;
     }
   }
   return drafted;
+}
+
+async function sendFirstTouchOutreach(store: AppStore, resolved: Required<AgentTickOptions>, sendsRemaining: number) {
+  if (!resolved.sendFirstTouch || sendsRemaining <= 0) return { sentFirstTouch: [], skippedFirstTouch: [], sendsRemaining };
+
+  const sentFirstTouch = [];
+  const skippedFirstTouch = [];
+  const drafts = store.outboundMessages
+    .filter((message) => message.status === "draft")
+    .map((message) => ({
+      message,
+      lead: store.buyerLeads.find((lead) => lead.id === message.buyer_lead_id),
+      campaign: store.campaigns.find((campaign) => campaign.id === message.campaign_id),
+    }))
+    .filter((item): item is { message: OutboundMessage; lead: BuyerLead; campaign: DomainCampaign } =>
+      Boolean(item.lead && item.campaign && isDraftableLead(item.lead)),
+    )
+    .sort((a, b) => b.lead.fit_score - a.lead.fit_score);
+
+  for (const { message, lead, campaign } of drafts) {
+    if (sentFirstTouch.length >= resolved.maxFirstTouchSendsPerTick || sendsRemaining <= 0) break;
+    const recipient = outboundEmailRecipient(lead.contact_email);
+    if (await isSuppressed(campaign.id, lead.id, recipient)) {
+      skippedFirstTouch.push({ buyer_lead_id: lead.id, reason: "suppressed" });
+      continue;
+    }
+
+    const sent = await sendEmailWithAgentMail(recipient, message.subject, message.body);
+    await updateOutboundMessage(message.id, {
+      to_email: recipient,
+      status: sent.message_id ? "sent" : "failed",
+      agentmail_message_id: sent.message_id,
+      agentmail_thread_id: sent.thread_id,
+      sent_at: new Date().toISOString(),
+      error: sent.error,
+    });
+    await updateLead(lead.id, {
+      status: sent.message_id ? "sent" : lead.status,
+      next_action: sent.message_id ? "Await reply; one follow-up allowed later." : "Outbound send failed; review delivery settings.",
+    });
+    if (["draft", "analyzed", "ready_for_outreach"].includes(campaign.status)) {
+      await updateCampaign(campaign.id, { status: "outreach_active" });
+    }
+    await addConversationEvent({
+      campaign_id: campaign.id,
+      buyer_lead_id: lead.id,
+      channel: "email",
+      direction: "outbound",
+      body: message.body,
+      classification: "sent_email",
+      next_action: sent.message_id ? "Await reply" : "Send failed; review delivery settings.",
+      agentmail_message_id: sent.message_id,
+      agentmail_thread_id: sent.thread_id,
+    });
+    await saveToSupermemory({
+      campaignId: campaign.id,
+      type: "agent_first_touch_sent",
+      content: JSON.stringify({ lead, message, recipient, sent }, null, 2),
+    });
+    sentFirstTouch.push({ buyer_lead_id: lead.id, company_name: lead.company_name, message_id: message.id, sent });
+    if (sent.message_id) sendsRemaining -= 1;
+  }
+
+  return { sentFirstTouch, skippedFirstTouch, sendsRemaining };
+}
+
+async function placeDuePhoneCalls(store: AppStore, resolved: Required<AgentTickOptions>) {
+  if (!resolved.makePhoneCalls) return { placedCalls: [], skippedCalls: [] };
+
+  const placedCalls = [];
+  const skippedCalls = [];
+
+  for (const lead of store.buyerLeads) {
+    if (placedCalls.length >= resolved.maxCallsPerTick) break;
+    if (!lead.contact_phone) continue;
+    if (!["sent", "email_drafted"].includes(lead.status)) continue;
+
+    const campaign = store.campaigns.find((item) => item.id === lead.campaign_id);
+    const policy = store.negotiationPolicies.find((item) => item.campaign_id === lead.campaign_id);
+    if (!campaign || !policy) continue;
+
+    const alreadyCalled = store.conversationEvents.some(
+      (event) => event.buyer_lead_id === lead.id && event.channel === "phone" && event.direction === "outbound",
+    );
+    if (alreadyCalled) continue;
+
+    const sentMessages = store.outboundMessages
+      .filter((message) => message.buyer_lead_id === lead.id && message.status === "sent" && message.sent_at)
+      .sort((a, b) => (b.sent_at || "").localeCompare(a.sent_at || ""));
+    const lastSent = sentMessages[0];
+    if (lastSent?.sent_at && hoursBetween(lastSent.sent_at) < 24) continue;
+
+    const result = await startAgentPhoneCall({ campaign, lead, policy, toNumber: lead.contact_phone });
+    if (result.ok) {
+      placedCalls.push({ buyer_lead_id: lead.id, company_name: lead.company_name, phone: lead.contact_phone, result });
+    } else {
+      skippedCalls.push({ buyer_lead_id: lead.id, company_name: lead.company_name, phone: lead.contact_phone, error: result.error });
+      await updateLead(lead.id, { next_action: `Phone call not placed: ${result.error}` });
+    }
+  }
+
+  return { placedCalls, skippedCalls };
 }
 
 function sentToday(messages: OutboundMessage[]) {
@@ -217,7 +368,7 @@ async function sendNegotiationResponse({
     subject,
     body: responseBody,
     status: sent.message_id ? "sent" : "failed",
-    to_email: outboundEmailRecipient(),
+    to_email: outboundEmailRecipient(lead.contact_email),
     agentmail_message_id: sent.message_id,
     agentmail_thread_id: sent.thread_id || event.agentmail_thread_id,
     sent_at: new Date().toISOString(),
@@ -240,7 +391,7 @@ async function sendNegotiationResponse({
     await addSuppression({
       campaign_id: campaign.id,
       buyer_lead_id: lead.id,
-      email: lead.contact_email || outboundEmailRecipient(),
+      email: lead.contact_email || outboundEmailRecipient(lead.contact_email),
       reason: event.classification,
     });
     await updateLead(lead.id, { status: "opted_out", next_action: "Suppressed" });
@@ -306,7 +457,7 @@ async function advanceNegotiations(store: AppStore, resolved: Required<AgentTick
       continue;
     }
 
-    if (await isSuppressed(campaign.id, lead.id, lead.contact_email || outboundEmailRecipient())) {
+    if (await isSuppressed(campaign.id, lead.id, lead.contact_email || outboundEmailRecipient(lead.contact_email))) {
       skippedNegotiations.push({ event_id: event.id, buyer_lead_id: lead.id, reason: "suppressed" });
       continue;
     }
@@ -344,7 +495,13 @@ export async function runAgentTick(options: AgentTickOptions = {}) {
   const resolved = { ...defaultOptions(), ...options };
   const processedReplies = await pollAgentMailReplies();
   let store = await loadStore();
+  const researchedCampaigns = await researchCampaigns(store, resolved);
+  store = await loadStore();
   const draftedOutreach = await prepareOutreachDrafts(store, resolved.maxDraftsPerTick);
+  store = await loadStore();
+  let sendsRemaining = Math.max(0, resolved.maxDailySends - sentToday(store.outboundMessages));
+  const firstTouchResult = await sendFirstTouchOutreach(store, resolved, sendsRemaining);
+  sendsRemaining = firstTouchResult.sendsRemaining;
   store = await loadStore();
   const negotiationSendsRemaining = Math.max(
     0,
@@ -356,7 +513,6 @@ export async function runAgentTick(options: AgentTickOptions = {}) {
   const sentFollowUps = [];
   const skipped = [];
   const recommendations = portfolioRecommendations(store);
-  let sendsRemaining = Math.max(0, resolved.maxDailySends - sentToday(store.outboundMessages));
 
   for (const lead of store.buyerLeads) {
     if (["opted_out", "deposit_requested", "escalated"].includes(lead.status)) continue;
@@ -396,7 +552,7 @@ export async function runAgentTick(options: AgentTickOptions = {}) {
       await updateLead(lead.id, { next_action: "Follow-up is due, but send cap was reached." });
       continue;
     }
-    if (await isSuppressed(lead.campaign_id, lead.id, lastSent.to_email || outboundEmailRecipient())) {
+    if (await isSuppressed(lead.campaign_id, lead.id, lastSent.to_email || outboundEmailRecipient(lead.contact_email))) {
       skipped.push({ buyer_lead_id: lead.id, company_name: lead.company_name, reason: "suppressed" });
       continue;
     }
@@ -404,7 +560,7 @@ export async function runAgentTick(options: AgentTickOptions = {}) {
     const campaign = store.campaigns.find((item) => item.id === lead.campaign_id);
     if (!campaign) continue;
     const generated = await generateFollowUpEmail(campaign, lead, lastSent);
-    const recipient = outboundEmailRecipient();
+    const recipient = outboundEmailRecipient(lead.contact_email);
     const sent = lastSent.agentmail_message_id
       ? await replyWithAgentMail(lastSent.agentmail_message_id, generated.body)
       : await sendEmailWithAgentMail(recipient, generated.subject, generated.body);
@@ -446,6 +602,9 @@ export async function runAgentTick(options: AgentTickOptions = {}) {
     sendsRemaining -= sent.message_id ? 1 : 0;
   }
 
+  store = await loadStore();
+  const phoneResult = await placeDuePhoneCalls(store, resolved);
+
   for (const recommendation of recommendations) {
     await saveToSupermemory({
       campaignId: recommendation.campaign_id,
@@ -477,8 +636,13 @@ export async function runAgentTick(options: AgentTickOptions = {}) {
 
   return {
     processedReplies,
+    researchedCampaigns,
     followUps,
     sentFollowUps,
+    sentFirstTouch: firstTouchResult.sentFirstTouch,
+    skippedFirstTouch: firstTouchResult.skippedFirstTouch,
+    placedCalls: phoneResult.placedCalls,
+    skippedCalls: phoneResult.skippedCalls,
     skipped,
     draftedOutreach,
     agentResponses: negotiationResult.agentResponses,

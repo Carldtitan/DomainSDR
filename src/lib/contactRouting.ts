@@ -1,6 +1,7 @@
-export function outboundEmailRecipient() {
+export function outboundEmailRecipient(leadEmail?: string) {
   return (
     process.env.CONTACT_OVERRIDE_EMAIL ||
+    leadEmail ||
     "carl@uni.minerva.edu"
   ).trim();
 }

@@ -21,13 +21,14 @@ type AgentMailSendResult = {
   error?: string;
 };
 
-type AgentMailMessage = {
+export type AgentMailMessage = {
   inbox_id: string;
   thread_id?: string;
   message_id: string;
   labels?: string[];
   timestamp?: string;
-  from?: string;
+  from?: string | string[];
+  from_?: string[];
   to?: string[];
   subject?: string;
   preview?: string;
@@ -181,6 +182,11 @@ function emailList(values?: string[]) {
   return (values || []).map(emailAddress).filter(Boolean);
 }
 
+function firstSender(message: AgentMailMessage) {
+  const from = Array.isArray(message.from) ? message.from[0] : message.from;
+  return from || message.from_?.[0] || "";
+}
+
 function normalizedSubject(value?: string) {
   return (value || "")
     .toLowerCase()
@@ -196,7 +202,7 @@ function matchLead(
   outboundMessages: OutboundMessage[],
 ) {
   const references = new Set([message.in_reply_to, ...(message.references ?? [])].filter(Boolean));
-  const from = emailAddress(message.from);
+  const from = emailAddress(firstSender(message));
   const recipients = emailList(message.to);
   const subject = normalizedSubject(message.subject);
 
@@ -237,55 +243,62 @@ function matchLead(
   return scored[0].lead;
 }
 
+export async function processAgentMailMessage(input: AgentMailMessage) {
+  if (await hasProcessedAgentmailMessage(input.message_id)) return undefined;
+
+  const store = await loadStore();
+  const message = (await getMessage(input.message_id)) || input;
+  const matchedLead = matchLead(message, store.campaigns, store.buyerLeads, store.negotiationPolicies, store.outboundMessages);
+  if (!matchedLead) return undefined;
+
+  const body = messageBody(message);
+  const lead = reconcileLeadFromReplyBody(body, matchedLead, store.buyerLeads);
+  const campaign = store.campaigns.find((item) => item.id === lead.campaign_id);
+  const policy = store.negotiationPolicies.find((item) => item.campaign_id === lead.campaign_id);
+  if (!campaign || !policy) return undefined;
+
+  const classification = await classifyReply(body);
+  const draft = generateNegotiationReply(campaign, lead, { ...classification, body }, policy);
+
+  const event = await addConversationEvent({
+    campaign_id: campaign.id,
+    buyer_lead_id: lead.id,
+    channel: "email",
+    direction: "inbound",
+    body,
+    classification: classification.classification,
+    offer_amount: classification.offer_amount,
+    urgency: classification.urgency,
+    next_action: draft.next_action,
+    suggested_response: draft.body,
+    agentmail_message_id: message.message_id,
+    agentmail_thread_id: message.thread_id,
+  });
+
+  if (draft.should_suppress) {
+    await addSuppression({
+      campaign_id: campaign.id,
+      buyer_lead_id: lead.id,
+      email: lead.contact_email || emailAddress(firstSender(message)),
+      reason: classification.classification,
+    });
+    await updateLead(lead.id, { status: "opted_out", next_action: "Suppressed" });
+  } else if (draft.should_escalate) {
+    await updateLead(lead.id, { status: "escalated", next_action: draft.next_action });
+  }
+
+  await markProcessedAgentmailMessage(message.message_id);
+  await markMessageRead(message.message_id);
+  return event;
+}
+
 export async function pollAgentMailReplies() {
   const messages = await listUnreadMessages();
-  const store = await loadStore();
   const processed = [];
 
   for (const listed of messages) {
-    if (await hasProcessedAgentmailMessage(listed.message_id)) continue;
-    const message = (await getMessage(listed.message_id)) || listed;
-    const matchedLead = matchLead(message, store.campaigns, store.buyerLeads, store.negotiationPolicies, store.outboundMessages);
-    if (!matchedLead) continue;
-    const body = messageBody(message);
-    const lead = reconcileLeadFromReplyBody(body, matchedLead, store.buyerLeads);
-    const campaign = store.campaigns.find((item) => item.id === lead.campaign_id);
-    const policy = store.negotiationPolicies.find((item) => item.campaign_id === lead.campaign_id);
-    if (!campaign || !policy) continue;
-
-    const classification = await classifyReply(body);
-    const draft = generateNegotiationReply(campaign, lead, { ...classification, body }, policy);
-
-    const event = await addConversationEvent({
-      campaign_id: campaign.id,
-      buyer_lead_id: lead.id,
-      channel: "email",
-      direction: "inbound",
-      body,
-      classification: classification.classification,
-      offer_amount: classification.offer_amount,
-      urgency: classification.urgency,
-      next_action: draft.next_action,
-      suggested_response: draft.body,
-      agentmail_message_id: message.message_id,
-      agentmail_thread_id: message.thread_id,
-    });
-
-    if (draft.should_suppress) {
-      await addSuppression({
-        campaign_id: campaign.id,
-        buyer_lead_id: lead.id,
-        email: lead.contact_email || emailAddress(message.from),
-        reason: classification.classification,
-      });
-      await updateLead(lead.id, { status: "opted_out", next_action: "Suppressed" });
-    } else if (draft.should_escalate) {
-      await updateLead(lead.id, { status: "escalated", next_action: draft.next_action });
-    }
-
-    await markProcessedAgentmailMessage(message.message_id);
-    await markMessageRead(message.message_id);
-    processed.push(event);
+    const event = await processAgentMailMessage(listed);
+    if (event) processed.push(event);
   }
 
   return processed;

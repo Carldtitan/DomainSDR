@@ -76,6 +76,34 @@ function extractEmails(text: string, domain: string) {
   return usefulGeneric || sameDomainEmails[0] || "";
 }
 
+function normalizePhone(value: string) {
+  const trimmed = value.replace(/\s+/g, " ").trim();
+  const digits = trimmed.replace(/\D/g, "");
+  if (digits.length === 10) {
+    return `+1 ${digits.slice(0, 3)}-${digits.slice(3, 6)}-${digits.slice(6)}`;
+  }
+  if (digits.length === 11 && digits.startsWith("1")) {
+    return `+1 ${digits.slice(1, 4)}-${digits.slice(4, 7)}-${digits.slice(7)}`;
+  }
+  if (digits.length >= 10 && digits.length <= 15 && trimmed.startsWith("+")) {
+    return `+${digits}`;
+  }
+  return "";
+}
+
+function extractPhone(text: string) {
+  const phoneRegex = /(?:\+?1[\s.-]?)?(?:\(?[2-9]\d{2}\)?[\s.-]?)?[2-9]\d{2}[\s.-]?\d{4}/g;
+  const blocked = new Set(["0000000000", "1111111111", "1234567890", "2015550123"]);
+  for (const match of text.match(phoneRegex) || []) {
+    const digits = match.replace(/\D/g, "");
+    const normalizedDigits = digits.length === 11 && digits.startsWith("1") ? digits.slice(1) : digits;
+    if (blocked.has(normalizedDigits)) continue;
+    const phone = normalizePhone(match);
+    if (phone) return phone;
+  }
+  return "";
+}
+
 function extractContactUrl(pages: PageContent[], fallback: string) {
   const linkRegex = /href=["']([^"']+)["'][^>]*>([^<]{0,80})/gi;
   for (const page of pages) {
@@ -185,6 +213,7 @@ export async function enrichLeadContact(lead: LeadInput): Promise<LeadInput> {
   const combinedText = pages.map((page) => `${page.title || ""} ${page.url} ${page.text}`).join("\n").slice(0, 25000);
   const websiteDomain = domainFromUrl(lead.website || lead.current_domain);
   const email = extractEmails(combinedText, websiteDomain);
+  const phone = extractPhone(combinedText);
   const contactUrl = extractContactUrl(pages, lead.contact_url || urls[0] || lead.website);
   const decisionMaker = extractDecisionMaker(combinedText);
 
@@ -192,6 +221,8 @@ export async function enrichLeadContact(lead: LeadInput): Promise<LeadInput> {
     ...lead,
     contact_email: email || lead.contact_email,
     contact_url: contactUrl || lead.contact_url,
+    contact_phone: phone || lead.contact_phone,
+    phone_source_url: phone ? pages.find((page) => page.text.includes(phone.replace("+1 ", "")))?.url || contactUrl : lead.phone_source_url,
     decision_maker_name: decisionMaker.name || lead.decision_maker_name,
     decision_maker_role: decisionMaker.role || lead.decision_maker_role || "Founder, growth, or business development",
     reason_fit: pages.length

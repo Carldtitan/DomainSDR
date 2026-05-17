@@ -98,7 +98,7 @@ export function IntakeForm({ campaigns }: { campaigns: DomainCampaign[] }) {
           <div className="rounded-md border border-white/10 bg-slate-950 p-4">
             <div className="mb-4">
               <h2 className="font-semibold text-white">3. Agent Permissions</h2>
-              <p className="mt-1 text-sm text-slate-500">First outbound email still requires review before AgentMail sends.</p>
+              <p className="mt-1 text-sm text-slate-500">The broker can research, send a capped first batch, follow up once, and negotiate within these limits.</p>
             </div>
             <div className="grid gap-3 text-sm text-slate-200 md:grid-cols-3">
               <label className="flex items-center gap-2 rounded-md border border-white/10 bg-white/5 p-3">

@@ -2,12 +2,19 @@ import { runAgentTick } from "@/lib/agentOrchestrator";
 
 export async function POST(request: Request) {
   const body = (await request.json().catch(() => ({}))) as {
+    discoverBuyers?: boolean;
+    sendFirstTouch?: boolean;
     sendNegotiationReplies?: boolean;
     sendFollowUps?: boolean;
+    makePhoneCalls?: boolean;
     minHoursSinceLastSend?: number;
+    minHoursBetweenResearch?: number;
+    minLeadsPerCampaign?: number;
     maxNegotiationRepliesPerTick?: number;
     maxDraftsPerTick?: number;
+    maxFirstTouchSendsPerTick?: number;
     maxFollowUpsPerTick?: number;
+    maxCallsPerTick?: number;
     maxDailyNegotiationSends?: number;
     maxDailySends?: number;
   };

@@ -94,7 +94,7 @@ export function OutreachReviewClient({ full, defaultRecipient }: { full: FullCam
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <h1 className="text-2xl font-semibold text-white">Outreach Review</h1>
-            <p className="mt-1 text-sm text-slate-400">Review every email before any send.</p>
+            <p className="mt-1 text-sm text-slate-400">Review or edit queued drafts. The broker also sends capped first-touch outreach when enabled.</p>
           </div>
           <button className={buttonClass} disabled={pending === "send" || selected.size === 0} onClick={() => setConfirming(true)}>
             {pending === "send" ? <Loader2 className="animate-spin" size={16} /> : <Send size={16} />}

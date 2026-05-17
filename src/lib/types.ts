@@ -86,6 +86,8 @@ export type BuyerLead = {
   current_domain_weakness: string;
   contact_email: string;
   contact_url: string;
+  contact_phone?: string;
+  phone_source_url?: string;
   decision_maker_name: string;
   decision_maker_role: string;
   source_url: string;
