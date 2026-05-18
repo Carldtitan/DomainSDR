@@ -646,3 +646,23 @@ Setup direction:
 - Create or list agents in AgentPhone.
 - Copy the returned ID, usually shaped like `agt_...` or `agent_...`.
 - Add it to Vercel as `AGENTPHONE_AGENT_ID`.
+
+## Global Domain Database Question
+
+The user then asked whether DomainSDR could get every domain in the world as a database and access it in vector format for free.
+
+Clarification:
+
+- A complete free database of every registered domain is not realistically available.
+- ICANN CZDS can provide free access to many gTLD zone files, but those zone files cover active/delegated domains, not every registered domain.
+- ccTLD access is inconsistent because ICANN's gTLD zone-file obligation does not apply to country-code TLDs.
+- Certificate Transparency logs are free and useful for domain discovery, but they only show domains and subdomains that have had certificates issued.
+- For DomainSDR, the practical free approach is not "download the whole internet." It is to build a focused domain intelligence index from CZDS gTLD zone files, Certificate Transparency, public DNS, and scraped homepage metadata.
+- Vector search should not embed only the raw domain string. It should embed enriched text: domain, tokens, TLD, homepage title, meta description, category, company name, and observed use case.
+
+Recommended free architecture:
+
+- Store raw domains in Postgres or SQLite.
+- Store vector embeddings in local FAISS, LanceDB, Qdrant local, or Postgres with pgvector if available.
+- Generate embeddings locally with an open model such as `bge-small`, `e5-small`, or `nomic-embed-text`.
+- Use vectors for semantic similarity and normal SQL/trigram search for exact domain patterns.
