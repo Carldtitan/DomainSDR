@@ -12,6 +12,7 @@ DomainSDR is an agentic domain broker MVP. It turns one owned domain into a low-
 - AgentPhone for guarded outbound calls and phone/SMS webhooks.
 - Supermemory for cross-campaign memory, learning, and workspace snapshots.
 - Stripe Checkout when `STRIPE_SECRET_KEY` is present; otherwise local mock checkout links.
+- Light-first agent UI with dark mode, clear boundaries, and overflow-safe activity logs.
 
 ## Broker Loop
 
@@ -22,12 +23,13 @@ Each tick:
 1. Polls AgentMail replies.
 2. Reconciles buyer identity from reply text and thread metadata.
 3. Researches and enriches buyers when the campaign needs more leads.
-4. Drafts top outreach for leads that do not have a message yet.
-5. Sends a small capped first-touch batch when policy allows.
-6. Advances unanswered inbound replies with a guarded negotiation response.
-7. Creates deposit links when a buyer asks how to buy or makes an acceptable offer.
-8. Sends one guarded follow-up to leads with no reply after the configured delay.
-9. Writes recommendations and a workspace snapshot to Supermemory.
+4. Extracts public emails, contact pages, decision-maker hints, and public phone numbers.
+5. Drafts top email outreach only for leads with public emails.
+6. Calls the controlled phone recipient for leads that have public phone numbers when the live agent run wakes.
+7. Advances unanswered inbound replies with a guarded negotiation response.
+8. Creates deposit links when a buyer asks how to buy or makes an acceptable offer.
+9. Sends one guarded follow-up to leads with no reply after the configured delay.
+10. Writes recommendations and a workspace snapshot to Supermemory.
 
 The app also runs a lightweight heartbeat every minute while a page is open. `vercel.json` schedules `/api/agent/tick` daily on Vercel Hobby; use Vercel Pro or an external scheduler for hourly unattended wakes.
 

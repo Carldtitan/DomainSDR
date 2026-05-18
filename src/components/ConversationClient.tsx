@@ -64,8 +64,8 @@ export function ConversationClient({
         <Panel>
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div>
-              <h1 className="text-2xl font-semibold text-white">{lead.company_name}</h1>
-              <p className="mt-1 text-sm text-slate-400">{lead.reason_fit}</p>
+              <h1 className="text-2xl font-semibold text-slate-950 dark:text-white">{lead.company_name}</h1>
+              <p className="mt-1 break-words text-sm text-slate-600 [overflow-wrap:anywhere] dark:text-slate-400">{lead.reason_fit}</p>
             </div>
             <StatusBadge>{lead.status.replaceAll("_", " ")}</StatusBadge>
           </div>
@@ -73,7 +73,7 @@ export function ConversationClient({
 
         <Panel>
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-            <h2 className="text-lg font-semibold text-white">Thread</h2>
+            <h2 className="text-lg font-semibold text-slate-950 dark:text-white">Thread</h2>
           </div>
 
           <div className="grid gap-3">
@@ -82,21 +82,21 @@ export function ConversationClient({
                 key={event.id}
                 className={`rounded-md border p-4 ${
                   event.direction === "outbound"
-                    ? "border-cyan-300/30 bg-cyan-300/10"
-                    : "border-white/10 bg-slate-950"
+                    ? "border-blue-200 bg-blue-50 dark:border-blue-300/30 dark:bg-blue-300/10"
+                    : "border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950"
                 }`}
               >
-                <div className="mb-2 flex flex-wrap items-center gap-2 text-xs text-slate-400">
+                <div className="mb-2 flex flex-wrap items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
                   <StatusBadge>{event.direction}</StatusBadge>
                   <StatusBadge>{event.classification.replaceAll("_", " ")}</StatusBadge>
                   {event.offer_amount ? <StatusBadge>{money(event.offer_amount)}</StatusBadge> : null}
                   <span>{compactDate(event.created_at)}</span>
                 </div>
-                <p className="whitespace-pre-wrap text-sm leading-6 text-slate-100">{event.body}</p>
-                {event.next_action ? <p className="mt-3 text-sm text-amber-200">Next: {event.next_action}</p> : null}
+                <p className="whitespace-pre-wrap break-words text-sm leading-6 text-slate-800 [overflow-wrap:anywhere] dark:text-slate-100">{event.body}</p>
+                {event.next_action ? <p className="mt-3 text-sm text-amber-700 dark:text-amber-200">Next: {event.next_action}</p> : null}
               </div>
             ))}
-            {events.length === 0 ? <p className="text-sm text-slate-400">No conversation events yet.</p> : null}
+            {events.length === 0 ? <p className="text-sm text-slate-500 dark:text-slate-400">No conversation events yet.</p> : null}
           </div>
         </Panel>
       </div>
@@ -141,7 +141,7 @@ function ConversationSidebar({
   return (
     <aside className="grid gap-4 self-start">
       <Panel>
-        <h2 className="text-lg font-semibold text-white">Suggested Response</h2>
+        <h2 className="text-lg font-semibold text-slate-950 dark:text-white">Suggested Response</h2>
         <div className="mt-4">
           <FieldLabel>Agent draft</FieldLabel>
           <textarea
@@ -151,7 +151,7 @@ function ConversationSidebar({
             placeholder="Simulate or poll a reply to generate a response."
           />
         </div>
-        {error ? <p className="mt-3 rounded-md border border-red-400/30 bg-red-500/10 px-3 py-2 text-sm text-red-200">{error}</p> : null}
+        {error ? <p className="mt-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-400/30 dark:bg-red-500/10 dark:text-red-200">{error}</p> : null}
         <button
           className={`${buttonClass} mt-4 w-full`}
           disabled={!latestInbound || !responseBody || Boolean(pending)}
@@ -163,7 +163,7 @@ function ConversationSidebar({
       </Panel>
 
       <Panel>
-        <h2 className="text-lg font-semibold text-white">Negotiation Controls</h2>
+        <h2 className="text-lg font-semibold text-slate-950 dark:text-white">Negotiation Controls</h2>
         <div className="mt-4">
           <FieldLabel>Accepted amount</FieldLabel>
           <input
@@ -173,7 +173,7 @@ function ConversationSidebar({
             value={depositAmount}
             onChange={(event) => setDepositAmount(event.target.value)}
           />
-          <p className="mt-2 text-xs text-slate-500">Floor is enforced server-side and hidden from buyers.</p>
+          <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">Floor is enforced server-side and hidden from buyers.</p>
         </div>
         <div className="mt-4 grid gap-2">
           <button
@@ -217,21 +217,21 @@ function ConversationSidebar({
       </Panel>
 
       <Panel>
-        <h2 className="text-lg font-semibold text-white">Ownership Proof</h2>
+        <h2 className="text-lg font-semibold text-slate-950 dark:text-white">Ownership Proof</h2>
         <div className="mt-4 grid gap-3 text-sm">
-          <div className="rounded-md border border-white/10 bg-slate-950 p-3">
-            <p className="text-xs uppercase tracking-wide text-slate-500">TXT Record</p>
-            <p className="mt-2 break-all text-slate-200">{ownershipProof.txt_record_name}</p>
-            <p className="mt-1 break-all font-mono text-cyan-200">{ownershipProof.txt_record_value}</p>
+          <div className="rounded-md border border-slate-200 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-900">
+            <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">TXT Record</p>
+            <p className="mt-2 break-all text-slate-700 dark:text-slate-200">{ownershipProof.txt_record_name}</p>
+            <p className="mt-1 break-all font-mono text-blue-700 dark:text-cyan-200">{ownershipProof.txt_record_value}</p>
           </div>
-          <div className="rounded-md border border-white/10 bg-slate-950 p-3">
-            <p className="text-xs uppercase tracking-wide text-slate-500">Landing Page</p>
-            <p className="mt-2 break-all text-cyan-200">{ownershipProof.landing_page_path}</p>
-            <p className="mt-2 text-slate-300">{ownershipProof.landing_page_text}</p>
+          <div className="rounded-md border border-slate-200 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-900">
+            <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">Landing Page</p>
+            <p className="mt-2 break-all text-blue-700 dark:text-cyan-200">{ownershipProof.landing_page_path}</p>
+            <p className="mt-2 text-slate-700 dark:text-slate-300">{ownershipProof.landing_page_text}</p>
           </div>
-          <div className="rounded-md border border-white/10 bg-slate-950 p-3">
-            <p className="text-xs uppercase tracking-wide text-slate-500">Escrow Route</p>
-            <ol className="mt-2 list-decimal space-y-1 pl-5 text-slate-300">
+          <div className="rounded-md border border-slate-200 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-900">
+            <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">Escrow Route</p>
+            <ol className="mt-2 list-decimal space-y-1 pl-5 text-slate-700 dark:text-slate-300">
               {ownershipProof.escrow_route.map((step) => (
                 <li key={step}>{step}</li>
               ))}
@@ -241,19 +241,19 @@ function ConversationSidebar({
       </Panel>
 
       <Panel>
-        <h2 className="text-lg font-semibold text-white">Offers</h2>
+        <h2 className="text-lg font-semibold text-slate-950 dark:text-white">Offers</h2>
         <div className="mt-3 grid gap-3">
           {offers.map((offer) => (
             <a
               key={offer.id}
               href={offer.payment_link}
-              className="rounded-md border border-white/10 bg-slate-950 p-3 text-sm transition hover:border-cyan-300/70"
+              className="rounded-md border border-slate-200 bg-slate-50 p-3 text-sm transition hover:border-slate-400 dark:border-slate-800 dark:bg-slate-900 dark:hover:border-cyan-300/70"
             >
-              <span className="block font-medium text-white">{money(offer.amount)}</span>
-              <span className="block text-slate-400">{offer.status.replaceAll("_", " ")}</span>
+              <span className="block font-medium text-slate-950 dark:text-white">{money(offer.amount)}</span>
+              <span className="block text-slate-500 dark:text-slate-400">{offer.status.replaceAll("_", " ")}</span>
             </a>
           ))}
-          {offers.length === 0 ? <p className="text-sm text-slate-400">No offers yet.</p> : null}
+          {offers.length === 0 ? <p className="text-sm text-slate-500 dark:text-slate-400">No offers yet.</p> : null}
         </div>
       </Panel>
     </aside>

@@ -13,7 +13,7 @@ import {
   updateOutboundMessage,
   upsertLeads,
 } from "@/lib/campaignStore";
-import { outboundEmailRecipient } from "@/lib/contactRouting";
+import { outboundEmailRecipient, outboundPhoneRecipient } from "@/lib/contactRouting";
 import { analyzeDomain, generateFollowUpEmail, generateOutboundEmail } from "@/lib/llmService";
 import { generateNegotiationReply } from "@/lib/negotiationEngine";
 import { createDepositLink } from "@/lib/paymentService";
@@ -45,7 +45,7 @@ type AgentTickOptions = {
 function isDraftableLead(lead: BuyerLead) {
   const text = `${lead.company_name} ${lead.website} ${lead.source_url}`.toLowerCase();
   if (lead.fit_score < 60) return false;
-  if (!lead.contact_email && !lead.contact_url) return false;
+  if (!lead.contact_email) return false;
   if (/\b(top|best)\s+\d+\b|companies in|company profile|apps on google play|github|seedtable|tracxn|industry\b/.test(text)) {
     return false;
   }
@@ -232,7 +232,7 @@ async function placeDuePhoneCalls(store: AppStore, resolved: Required<AgentTickO
     if (placedCalls.length >= resolved.maxCallsPerTick) break;
     if (resolved.campaignId && lead.campaign_id !== resolved.campaignId) continue;
     if (!lead.contact_phone) continue;
-    if (!["sent", "email_drafted"].includes(lead.status)) continue;
+    if (!["new", "scored", "sent", "email_drafted"].includes(lead.status)) continue;
 
     const campaign = store.campaigns.find((item) => item.id === lead.campaign_id);
     const policy = store.negotiationPolicies.find((item) => item.campaign_id === lead.campaign_id);
@@ -249,11 +249,17 @@ async function placeDuePhoneCalls(store: AppStore, resolved: Required<AgentTickO
     const lastSent = sentMessages[0];
     if (lastSent?.sent_at && hoursBetween(lastSent.sent_at) < 24) continue;
 
-    const result = await startAgentPhoneCall({ campaign, lead, policy, toNumber: lead.contact_phone });
+    const result = await startAgentPhoneCall({ campaign, lead, policy, toNumber: outboundPhoneRecipient() });
     if (result.ok) {
-      placedCalls.push({ buyer_lead_id: lead.id, company_name: lead.company_name, phone: lead.contact_phone, result });
+      placedCalls.push({
+        buyer_lead_id: lead.id,
+        company_name: lead.company_name,
+        discoveredPhone: lead.contact_phone,
+        controlledRecipient: outboundPhoneRecipient(),
+        result,
+      });
     } else {
-      skippedCalls.push({ buyer_lead_id: lead.id, company_name: lead.company_name, phone: lead.contact_phone, error: result.error });
+      skippedCalls.push({ buyer_lead_id: lead.id, company_name: lead.company_name, discoveredPhone: lead.contact_phone, error: result.error });
       await updateLead(lead.id, { next_action: `Phone call not placed: ${result.error}` });
     }
   }

@@ -53,17 +53,33 @@ function candidateUrls(lead: LeadInput) {
     lead.contact_url,
     base,
     `${origin}/contact`,
+    `${origin}/contact-us`,
+    `${origin}/sales`,
+    `${origin}/demo`,
+    `${origin}/request-demo`,
+    `${origin}/book-a-demo`,
     `${origin}/about`,
+    `${origin}/about-us`,
     `${origin}/team`,
     `${origin}/company`,
     `${origin}/leadership`,
-  ]).slice(0, 5);
+    `${origin}/support`,
+    `${origin}/privacy`,
+    `${origin}/terms`,
+  ]).slice(0, 10);
 }
 
 function extractEmails(text: string, domain: string) {
   const emailRegex = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi;
   const blocked = new Set(["example.com", "domain.com"]);
-  const emails = unique((text.match(emailRegex) || []).map((email) => email.toLowerCase()))
+  const mailtoRegex = /mailto:([^"'>?\s]+)/gi;
+  const obfuscatedRegex =
+    /([A-Z0-9._%+-]+)\s*(?:\(|\[)?\s*(?:at)\s*(?:\)|\])?\s*([A-Z0-9.-]+)\s*(?:\(|\[)?\s*(?:dot)\s*(?:\)|\])?\s*([A-Z]{2,})/gi;
+  const mailtoEmails = [...text.matchAll(mailtoRegex)].map((match) => decodeURIComponent(match[1]).toLowerCase());
+  const obfuscatedEmails = [...text.matchAll(obfuscatedRegex)].map((match) =>
+    `${match[1]}@${match[2]}.${match[3]}`.toLowerCase(),
+  );
+  const emails = unique([...(text.match(emailRegex) || []), ...mailtoEmails, ...obfuscatedEmails].map((email) => email.toLowerCase()))
     .filter((email) => !blocked.has(email.split("@")[1]))
     .filter((email) => !/\.(png|jpg|jpeg|gif|webp|svg)$/i.test(email));
 
@@ -72,7 +88,7 @@ function extractEmails(text: string, domain: string) {
     const emailDomain = email.split("@")[1] || "";
     return emailDomain === siteDomain || emailDomain.endsWith(`.${siteDomain}`);
   });
-  const usefulGeneric = sameDomainEmails.find((email) => /^(hello|contact|sales|partnerships|info|team|growth)@/i.test(email));
+  const usefulGeneric = sameDomainEmails.find((email) => /^(hello|contact|sales|partnerships|partnership|info|team|growth|founders|founder|bd|bizdev|support)@/i.test(email));
   return usefulGeneric || sameDomainEmails[0] || "";
 }
 
@@ -167,7 +183,7 @@ async function directFetchPages(urls: string[]) {
   for (const url of urls) {
     const page = await fetchWithTimeout(url);
     if (page?.text) pages.push(page);
-    if (pages.length >= 3) break;
+    if (pages.length >= 6) break;
   }
   return pages;
 }
@@ -183,7 +199,7 @@ async function apifyFetchPages(urls: string[]) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         startUrls: urls.map((url) => ({ url })),
-        maxCrawlPages: Math.min(urls.length, 5),
+        maxCrawlPages: Math.min(urls.length, 8),
         maxCrawlDepth: 0,
         crawlerType: "cheerio",
         saveHtml: true,
@@ -193,7 +209,7 @@ async function apifyFetchPages(urls: string[]) {
     if (!response.ok) return [];
     const items = (await response.json()) as ApifyContentItem[];
     return items
-      .slice(0, 3)
+      .slice(0, 6)
       .map((item) => ({
         url: item.loadedUrl || item.url || "",
         title: item.title,
@@ -206,16 +222,59 @@ async function apifyFetchPages(urls: string[]) {
   }
 }
 
+async function apifySearchContactSnippets(lead: LeadInput) {
+  if (!apifyAllowed() || process.env.ALLOW_APIFY_CONTACT_ENRICHMENT !== "true") return "";
+  const domain = normalizeDomain(domainFromUrl(lead.website || lead.current_domain));
+  if (!domain) return "";
+  const endpoint = apifyRunSyncDatasetUrl("apify/google-search-scraper", 45);
+  const queries = [
+    `site:${domain} email OR phone OR contact`,
+    `site:${domain} "mailto:"`,
+    `"${lead.company_name}" "@"`,
+    `"${lead.company_name}" "sales" "email"`,
+    `"${lead.company_name}" "phone"`,
+  ];
+
+  try {
+    const response = await fetch(endpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        queries: queries.join("\n"),
+        resultsPerPage: 4,
+        maxPagesPerQuery: 1,
+        languageCode: "en",
+        countryCode: "us",
+      }),
+    });
+    if (!response.ok) return "";
+    const items = (await response.json()) as {
+      organicResults?: { title?: string; url?: string; description?: string; snippet?: string }[];
+      nonPromotedSearchResults?: { title?: string; url?: string; description?: string; snippet?: string }[];
+      results?: { title?: string; url?: string; description?: string; snippet?: string }[];
+    }[];
+    return items
+      .flatMap((item) => item.organicResults || item.nonPromotedSearchResults || item.results || [])
+      .map((item) => `${item.title || ""} ${item.url || ""} ${item.description || ""} ${item.snippet || ""}`)
+      .join("\n")
+      .slice(0, 12000);
+  } catch {
+    return "";
+  }
+}
+
 export async function enrichLeadContact(lead: LeadInput): Promise<LeadInput> {
   const urls = candidateUrls(lead);
   const apifyPages = await apifyFetchPages(urls);
   const pages = apifyPages.length > 0 ? apifyPages : await directFetchPages(urls);
-  const combinedText = pages.map((page) => `${page.title || ""} ${page.url} ${page.text}`).join("\n").slice(0, 25000);
+  const combinedText = pages.map((page) => `${page.title || ""} ${page.url} ${page.text} ${page.html || ""}`).join("\n").slice(0, 30000);
   const websiteDomain = domainFromUrl(lead.website || lead.current_domain);
-  const email = extractEmails(combinedText, websiteDomain);
-  const phone = extractPhone(combinedText);
+  const searchText = await apifySearchContactSnippets(lead);
+  const allText = `${combinedText}\n${searchText}`.slice(0, 35000);
+  const email = extractEmails(allText, websiteDomain);
+  const phone = extractPhone(allText);
   const contactUrl = extractContactUrl(pages, lead.contact_url || urls[0] || lead.website);
-  const decisionMaker = extractDecisionMaker(combinedText);
+  const decisionMaker = extractDecisionMaker(allText);
 
   return {
     ...lead,
@@ -225,8 +284,8 @@ export async function enrichLeadContact(lead: LeadInput): Promise<LeadInput> {
     phone_source_url: phone ? pages.find((page) => page.text.includes(phone.replace("+1 ", "")))?.url || contactUrl : lead.phone_source_url,
     decision_maker_name: decisionMaker.name || lead.decision_maker_name,
     decision_maker_role: decisionMaker.role || lead.decision_maker_role || "Founder, growth, or business development",
-    reason_fit: pages.length
-      ? `${lead.reason_fit} Contact enrichment checked ${pages.length} public page${pages.length === 1 ? "" : "s"}.`
+    reason_fit: pages.length || searchText
+      ? `${lead.reason_fit} Contact enrichment checked ${pages.length} public page${pages.length === 1 ? "" : "s"}${searchText ? " and search snippets" : ""}.`
       : lead.reason_fit,
   };
 }

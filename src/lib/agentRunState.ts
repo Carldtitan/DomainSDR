@@ -20,6 +20,12 @@ export function buildAgentRunState(full: FullCampaign) {
   const sentMessages = full.messages.filter((message) => message.status === "sent");
   const draftMessages = full.messages.filter((message) => message.status === "draft");
   const failedMessages = full.messages.filter((message) => message.status === "failed");
+  const reachableLeads = full.leads.filter((lead) => lead.contact_email || lead.contact_phone);
+  const emailReachable = full.leads.filter((lead) => lead.contact_email);
+  const phoneReachable = full.leads.filter((lead) => lead.contact_phone);
+  const callsStarted = full.events.filter(
+    (event) => event.channel === "phone" && event.direction === "outbound" && event.classification === "system_note",
+  );
   const depositPaid = full.offers.some((offer) => offer.status === "deposit_paid");
   const depositRequested = full.offers.some((offer) => offer.status === "deposit_requested" || offer.status === "deposit_paid");
 
@@ -68,16 +74,16 @@ export function buildAgentRunState(full: FullCampaign) {
       state: full.leads.length > 0 ? "done" : full.campaign.status === "researching" ? "working" : "queued",
       detail:
         full.leads.length > 0
-          ? `${full.leads.length} buyer${full.leads.length === 1 ? "" : "s"} found and scored.`
-          : "Searching the web and enriching contacts.",
+          ? `${full.leads.length} buyer${full.leads.length === 1 ? "" : "s"} found. ${reachableLeads.length} reachable by public email or phone.`
+          : "Searching the web, extracting public emails, and finding phone numbers.",
     },
     {
       label: "Start outreach",
-      state: sentMessages.length > 0 ? "done" : draftMessages.length > 0 ? "working" : "queued",
+      state: sentMessages.length > 0 || callsStarted.length > 0 ? "done" : draftMessages.length > 0 || reachableLeads.length > 0 ? "working" : "queued",
       detail:
-        sentMessages.length > 0
-          ? `${sentMessages.length} controlled email${sentMessages.length === 1 ? "" : "s"} sent.`
-          : "Writing short, buyer-specific messages and sending only when contactable.",
+        sentMessages.length > 0 || callsStarted.length > 0
+          ? `${sentMessages.length} controlled email${sentMessages.length === 1 ? "" : "s"} sent and ${callsStarted.length} controlled call${callsStarted.length === 1 ? "" : "s"} started.`
+          : "Writing short, buyer-specific messages, emailing reachable leads, and calling controlled phone for phone-only leads.",
     },
     {
       label: "Get a response",
@@ -157,8 +163,12 @@ export function buildAgentRunState(full: FullCampaign) {
       : null,
     counts: {
       buyersFound: full.leads.length,
+      reachable: reachableLeads.length,
+      emailReachable: emailReachable.length,
+      phoneReachable: phoneReachable.length,
       drafted: draftMessages.length,
       sent: sentMessages.length,
+      callsStarted: callsStarted.length,
       failed: failedMessages.length,
       replies: inboundReplies.length,
       depositsRequested: full.offers.filter((offer) => offer.status === "deposit_requested" || offer.status === "deposit_paid").length,

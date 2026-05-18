@@ -15,7 +15,7 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
     sendFirstTouch: true,
     sendNegotiationReplies: true,
     sendFollowUps: true,
-    makePhoneCalls: process.env.AGENT_AUTOPILOT_CALLS === "true",
+    makePhoneCalls: true,
     minLeadsPerCampaign: 12,
     minHoursBetweenResearch: 2,
     maxDraftsPerTick: 5,
