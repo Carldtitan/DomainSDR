@@ -666,3 +666,33 @@ Recommended free architecture:
 - Store vector embeddings in local FAISS, LanceDB, Qdrant local, or Postgres with pgvector if available.
 - Generate embeddings locally with an open model such as `bge-small`, `e5-small`, or `nomic-embed-text`.
 - Use vectors for semantic similarity and normal SQL/trigram search for exact domain patterns.
+
+## Nano.ai Buyer Discovery Timeout
+
+The user reported at 6:24 PM that the `nano.ai` run had been stuck on buyer discovery since 6:12 PM.
+
+Investigation evidence:
+
+- Production health showed the campaign count increased, but the lead count did not.
+- Vercel logs showed `POST /api/campaigns/camp_c0240c9c/agent-work` returning `504 Vercel Runtime Timeout`.
+- The problem was not the UI. The serverless agent tick was timing out before it saved any buyers.
+
+Root cause:
+
+- One agent wake was trying to do too much synchronously:
+  - Apify buyer search.
+  - Contact crawling.
+  - Public email extraction.
+  - Multiple Gemini buyer scoring calls.
+  - Outreach preparation.
+- Because leads were only saved after all of that finished, a timeout meant the user saw zero progress.
+
+Fix direction:
+
+- Save buyer leads immediately after the fast Apify search pass.
+- Move slower contact enrichment into later capped wakes.
+- Default buyer scoring to deterministic local scoring during discovery.
+- Add explicit timeouts around Gemini and Apify calls.
+- Add structured logs around agent tick, research start, research saved, and contact enrichment.
+- Add `nano.ai`-relevant search expansions for nanotechnology, materials AI, semiconductors, nanomaterials, and materials informatics.
+- Stop showing long generated positioning statements in the plan card.

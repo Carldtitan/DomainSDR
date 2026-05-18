@@ -22,6 +22,12 @@ type SearchItem = {
 };
 
 type LeadCandidate = Omit<BuyerLead, "id" | "campaign_id" | "created_at" | "updated_at">;
+type DiscoverBuyerOptions = {
+  enrichContacts?: boolean;
+  scoreWithLlm?: boolean;
+  maxQueries?: number;
+  maxCandidates?: number;
+};
 
 const CONTENT_PATH_PATTERN =
   /\/(blog|news|newsroom|press|press-releases|news-releases|insights|resources|customers|customer-stories|case-studies?|articles?|learn|build)\//;
@@ -196,37 +202,44 @@ function searchItemsToCandidates(
   return candidates;
 }
 
-async function runApifySearch(queries: string[]): Promise<SearchItem[]> {
+async function runApifySearch(queries: string[], maxQueries = 3): Promise<SearchItem[]> {
   if (!apifyAllowed()) return [];
 
-  const requestedQueries = queries.slice(0, 4);
-  const endpoint = apifyRunSyncDatasetUrl("apify/google-search-scraper", 60);
+  const requestedQueries = queries.slice(0, maxQueries);
+  const endpoint = apifyRunSyncDatasetUrl("apify/google-search-scraper", Number(process.env.APIFY_SEARCH_TIMEOUT_SECONDS || 22));
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), Number(process.env.APIFY_SEARCH_ABORT_MS || 28_000));
 
-  const response = await fetch(endpoint, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      queries: requestedQueries.join("\n"),
-      resultsPerPage: 8,
-      maxPagesPerQuery: 1,
-      languageCode: "en",
-      countryCode: "us",
-    }),
-  });
+  try {
+    const response = await fetch(endpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      signal: controller.signal,
+      body: JSON.stringify({
+        queries: requestedQueries.join("\n"),
+        resultsPerPage: Number(process.env.APIFY_SEARCH_RESULTS_PER_PAGE || 6),
+        maxPagesPerQuery: 1,
+        languageCode: "en",
+        countryCode: "us",
+      }),
+    });
 
-  if (!response.ok) {
-    throw new Error(`Apify search failed: ${response.status}`);
+    if (!response.ok) {
+      throw new Error(`Apify search failed: ${response.status}`);
+    }
+
+    const normalizedOrder = new Map(
+      requestedQueries.map((query, index) => [query.replace(/"/g, "").toLowerCase(), index]),
+    );
+
+    return ((await response.json()) as SearchItem[]).sort((left, right) => {
+      const leftQuery = (left.searchQuery?.term || left.query || "").replace(/"/g, "").toLowerCase();
+      const rightQuery = (right.searchQuery?.term || right.query || "").replace(/"/g, "").toLowerCase();
+      return (normalizedOrder.get(leftQuery) ?? 999) - (normalizedOrder.get(rightQuery) ?? 999);
+    });
+  } finally {
+    clearTimeout(timeout);
   }
-
-  const normalizedOrder = new Map(
-    requestedQueries.map((query, index) => [query.replace(/"/g, "").toLowerCase(), index]),
-  );
-
-  return ((await response.json()) as SearchItem[]).sort((left, right) => {
-    const leftQuery = (left.searchQuery?.term || left.query || "").replace(/"/g, "").toLowerCase();
-    const rightQuery = (right.searchQuery?.term || right.query || "").replace(/"/g, "").toLowerCase();
-    return (normalizedOrder.get(leftQuery) ?? 999) - (normalizedOrder.get(rightQuery) ?? 999);
-  });
 }
 
 function categoryExpansionQueries(campaign: DomainCampaign, analysis: DomainAnalysis) {
@@ -246,6 +259,17 @@ function categoryExpansionQueries(campaign: DomainCampaign, analysis: DomainAnal
     ].forEach((query) => queryParts.add(query));
   }
 
+  if (words.some((word) => ["nano", "nanotech", "nanotechnology"].includes(word))) {
+    [
+      "\"nanotechnology\" \"AI\" startup",
+      "\"nanotech\" \"machine learning\" company",
+      "\"materials discovery\" \"AI\" startup",
+      "\"semiconductor\" \"AI\" \"nanotechnology\"",
+      "\"nanomaterials\" \"AI\" company",
+      "\"materials informatics\" startup",
+    ].forEach((query) => queryParts.add(query));
+  }
+
   for (const word of words) {
     queryParts.add(`${word} AI startup`);
     queryParts.add(`${word} software company`);
@@ -258,21 +282,50 @@ function categoryExpansionQueries(campaign: DomainCampaign, analysis: DomainAnal
   return [...queryParts].filter(Boolean).slice(0, 10);
 }
 
-export async function discoverBuyers(campaign: DomainCampaign, analysis: DomainAnalysis) {
+function discoveryOptions(options: DiscoverBuyerOptions) {
+  return {
+    enrichContacts: options.enrichContacts ?? process.env.AGENT_DISCOVERY_ENRICH_CONTACTS === "true",
+    scoreWithLlm: options.scoreWithLlm ?? process.env.AGENT_DISCOVERY_LLM_SCORE === "true",
+    maxQueries: options.maxQueries ?? Number(process.env.AGENT_DISCOVERY_MAX_QUERIES || 3),
+    maxCandidates: options.maxCandidates ?? Number(process.env.AGENT_DISCOVERY_MAX_CANDIDATES || 12),
+  };
+}
+
+export async function discoverBuyers(campaign: DomainCampaign, analysis: DomainAnalysis, options: DiscoverBuyerOptions = {}) {
+  const resolved = discoveryOptions(options);
   const queries = categoryExpansionQueries(campaign, analysis);
 
   let candidates: Omit<BuyerLead, "id" | "campaign_id" | "created_at" | "updated_at">[] = [];
   try {
-    const items = await runApifySearch(queries);
+    console.log("[discoverBuyers] search started", { campaignId: campaign.id, domain: campaign.domain, queries: queries.slice(0, resolved.maxQueries) });
+    const items = await runApifySearch(queries, resolved.maxQueries);
     candidates = searchItemsToCandidates(campaign, analysis, items);
-  } catch {
+    console.log("[discoverBuyers] search completed", { campaignId: campaign.id, domain: campaign.domain, candidates: candidates.length });
+  } catch (error) {
+    console.error("[discoverBuyers] search failed", {
+      campaignId: campaign.id,
+      domain: campaign.domain,
+      error: error instanceof Error ? error.message : String(error),
+    });
     candidates = [];
   }
 
-  const enriched = await enrichLeadContacts(candidates.slice(0, 15));
+  const base = candidates
+    .map((candidate) => ({
+      ...candidate,
+      fit_score: localBuyerFitScore(campaign, candidate),
+      status: "scored" as const,
+    }))
+    .sort((a, b) => b.fit_score - a.fit_score)
+    .slice(0, resolved.maxCandidates);
 
-  const scored = await Promise.all(
-    enriched.map(async (candidate) => {
+  const enriched = resolved.enrichContacts ? await enrichLeadContacts(base.slice(0, Math.min(3, base.length))) : [];
+  const enrichedByWebsite = new Map(enriched.map((lead) => [normalizeDomain(lead.website || lead.current_domain), lead]));
+  const reachableCandidates = base.map((candidate) => enrichedByWebsite.get(normalizeDomain(candidate.website || candidate.current_domain)) || candidate);
+
+  const scored = resolved.scoreWithLlm
+    ? await Promise.all(
+      reachableCandidates.map(async (candidate) => {
       const score = await scoreBuyer(campaign.domain, campaign, candidate);
       return {
         ...candidate,
@@ -281,8 +334,14 @@ export async function discoverBuyers(campaign: DomainCampaign, analysis: DomainA
         outreach_angle: score.recommended_outreach_angle,
         status: "scored" as const,
       };
-    }),
-  );
+      }),
+    )
+    : reachableCandidates.map((candidate) => ({
+      ...candidate,
+      reason_fit: candidate.reason_fit,
+      outreach_angle: candidate.outreach_angle || candidate.reason_fit,
+      status: "scored" as const,
+    }));
 
   return scored.sort((a, b) => b.fit_score - a.fit_score).slice(0, 20);
 }

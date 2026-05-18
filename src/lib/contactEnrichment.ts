@@ -85,7 +85,7 @@ function candidateUrls(lead: LeadInput) {
     `${origin}/support`,
     `${origin}/privacy`,
     `${origin}/terms`,
-  ]).slice(0, 10);
+  ]).slice(0, Number(process.env.CONTACT_ENRICH_MAX_URLS || 4));
 }
 
 function extractEmails(text: string, domain: string) {
@@ -216,7 +216,7 @@ async function rememberEmailPattern(lead: LeadInput, email: string, sourceUrl?: 
   });
 }
 
-async function fetchWithTimeout(url: string, timeoutMs = 3500) {
+async function fetchWithTimeout(url: string, timeoutMs = Number(process.env.CONTACT_FETCH_TIMEOUT_MS || 2500)) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
   try {
@@ -242,7 +242,7 @@ async function directFetchPages(urls: string[]) {
   for (const url of urls) {
     const page = await fetchWithTimeout(url);
     if (page?.text) pages.push(page);
-    if (pages.length >= 6) break;
+    if (pages.length >= Number(process.env.CONTACT_DIRECT_MAX_PAGES || 3)) break;
   }
   return pages;
 }

@@ -94,24 +94,33 @@ async function generateJson<T>(prompt: string, fallback: T, temperature = 0.25):
   if (!apiKey) return fallback;
 
   const model = process.env.GEMINI_MODEL || "gemini-2.5-flash";
-  const response = await fetch(`${GEMINI_ENDPOINT}/${model}:generateContent?key=${apiKey}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      contents: [{ role: "user", parts: [{ text: prompt }] }],
-      generationConfig: {
-        temperature,
-        responseMimeType: "application/json",
-        maxOutputTokens: 2048,
-      },
-    }),
-  });
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), Number(process.env.GEMINI_TIMEOUT_MS || 12_000));
+  try {
+    const response = await fetch(`${GEMINI_ENDPOINT}/${model}:generateContent?key=${apiKey}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      signal: controller.signal,
+      body: JSON.stringify({
+        contents: [{ role: "user", parts: [{ text: prompt }] }],
+        generationConfig: {
+          temperature,
+          responseMimeType: "application/json",
+          maxOutputTokens: 2048,
+        },
+      }),
+    });
 
-  if (!response.ok) return fallback;
+    if (!response.ok) return fallback;
 
-  const data = (await response.json()) as GeminiResponse;
-  const text = data.candidates?.[0]?.content?.parts?.map((part) => part.text ?? "").join("") ?? "";
-  return extractJson<T>(text, fallback);
+    const data = (await response.json()) as GeminiResponse;
+    const text = data.candidates?.[0]?.content?.parts?.map((part) => part.text ?? "").join("") ?? "";
+    return extractJson<T>(text, fallback);
+  } catch {
+    return fallback;
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 export async function analyzeDomain(domain: string, useCaseThesis?: string): Promise<DomainAnalysis> {
