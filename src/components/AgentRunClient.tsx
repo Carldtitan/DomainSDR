@@ -127,20 +127,16 @@ export function AgentRunClient({ initialState }: { initialState: AgentRunState }
   const ended = state.stage === "ended";
   const paused = state.stage === "paused";
   const stopped = ended || paused;
-  const currentAction =
-    ended
-      ? "This run is stopped."
-      : paused
-        ? "This run is paused."
-      : wakeStatus === "starting"
-      ? "Opening run."
-      : wakeStatus === "checking"
-        ? "Checking status and replies."
-        : wakeStatus === "working"
-          ? "Working now: searching, enriching contacts, sending batches, checking replies."
-          : waiting
-            ? "Waiting for the next wake or reply."
-            : "Reply or deposit reached.";
+  let currentAction = "Reply or deposit reached.";
+  if (ended) currentAction = "This run is stopped.";
+  else if (paused) currentAction = "This run is paused.";
+  else if (state.stage === "handoff") currentAction = "Waiting for buyer phone number and weekend availability.";
+  else if (state.stage === "booking_handoff") currentAction = "AgentPhone is calling to book the handoff.";
+  else if (state.stage === "handoff_ready") currentAction = "Weekend handoff time is ready for owner confirmation.";
+  else if (wakeStatus === "starting") currentAction = "Opening run.";
+  else if (wakeStatus === "checking") currentAction = "Checking status and replies.";
+  else if (wakeStatus === "working") currentAction = "Working now: finding contacts, sending messages, checking replies.";
+  else if (waiting) currentAction = "Waiting for the next wake or reply.";
 
   return (
     <div className="mx-auto flex min-h-[calc(100vh-140px)] w-full max-w-5xl flex-col justify-center py-8">

@@ -144,6 +144,18 @@ async function startSchedulingCall({
   const toNumber = process.env.ALLOW_EXTERNAL_PHONE_OUTBOUND === "true" && buyerPhone ? buyerPhone : outboundPhoneRecipient();
   const result = await startAgentPhoneSchedulingCall({ campaign, lead: { ...lead, contact_phone: buyerPhone || lead.contact_phone }, policy, offer, toNumber });
   if (!result.ok) {
+    const resultData = "data" in result ? result.data : undefined;
+    const detail = resultData ? ` ${JSON.stringify(resultData).slice(0, 240)}` : "";
+    await addConversationEvent({
+      campaign_id: campaign.id,
+      buyer_lead_id: lead.id,
+      channel: "manual",
+      direction: "outbound",
+      body: `AgentPhone scheduling call could not start: ${result.error || "unknown error"}.${detail}`,
+      classification: "system_note",
+      offer_amount: offer.amount,
+      next_action: "Fix AgentPhone caller number, then retry scheduling call.",
+    });
     await updateLead(lead.id, { next_action: `Deposit paid; AgentPhone scheduling not started: ${result.error}` });
   }
   return result;
