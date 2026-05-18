@@ -19,6 +19,7 @@ export async function POST(request: Request) {
     maxFirstTouchSendsPerTick?: number;
     maxFollowUpsPerTick?: number;
     maxCallsPerTick?: number;
+    maxContactEnrichmentPerTick?: number;
     maxDailyNegotiationSends?: number;
     maxDailySends?: number;
   };

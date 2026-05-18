@@ -67,7 +67,7 @@ export function buildAgentRunState(full: FullCampaign) {
     {
       label: "Plan",
       state: full.campaign.analysis ? "done" : "working",
-      detail: full.campaign.analysis?.positioning_statement || full.campaign.use_case_thesis || "In progress.",
+      detail: full.campaign.use_case_thesis || "Plan ready.",
     },
     {
       label: "Buyers",

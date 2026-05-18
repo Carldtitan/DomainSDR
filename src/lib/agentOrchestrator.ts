@@ -1,5 +1,6 @@
 import { pollAgentMailReplies, replyWithAgentMail, sendEmailWithAgentMail } from "@/lib/agentMailService";
 import { discoverBuyers } from "@/lib/apifyService";
+import { enrichLeadContact } from "@/lib/contactEnrichment";
 import {
   addConversationEvent,
   addOrUpdateOutboundMessage,
@@ -38,6 +39,7 @@ type AgentTickOptions = {
   maxFirstTouchSendsPerTick?: number;
   maxFollowUpsPerTick?: number;
   maxCallsPerTick?: number;
+  maxContactEnrichmentPerTick?: number;
   maxDailyNegotiationSends?: number;
   maxDailySends?: number;
 };
@@ -76,6 +78,7 @@ function defaultOptions(): Required<AgentTickOptions> {
     maxFirstTouchSendsPerTick: Number(process.env.AGENT_FIRST_TOUCH_MAX_SENDS_PER_TICK || 2),
     maxFollowUpsPerTick: Number(process.env.AGENT_FOLLOWUP_MAX_SENDS_PER_TICK || 3),
     maxCallsPerTick: Number(process.env.AGENT_CALL_MAX_PER_TICK || 1),
+    maxContactEnrichmentPerTick: Number(process.env.AGENT_CONTACT_ENRICH_MAX_PER_TICK || 1),
     maxDailyNegotiationSends: Number(process.env.AGENT_NEGOTIATION_MAX_DAILY_SENDS || 20),
     maxDailySends: Number(process.env.AGENT_FOLLOWUP_MAX_DAILY_SENDS || 5),
   };
@@ -100,11 +103,18 @@ async function researchCampaigns(store: AppStore, resolved: Required<AgentTickOp
 
     if (!shouldResearch) continue;
 
+    console.log("[agent] research started", { campaignId: campaign.id, domain: campaign.domain, leadCount });
     await updateCampaign(campaign.id, { status: "researching" });
     const analysis = campaign.analysis || (await analyzeDomain(campaign.domain, campaign.use_case_thesis));
     if (!campaign.analysis) await updateCampaign(campaign.id, { analysis });
-    const discovered = await discoverBuyers(campaign, analysis);
+    const discovered = await discoverBuyers(campaign, analysis, {
+      enrichContacts: false,
+      scoreWithLlm: false,
+      maxQueries: 3,
+      maxCandidates: 12,
+    });
     const leads = await upsertLeads(campaign.id, discovered);
+    console.log("[agent] research saved", { campaignId: campaign.id, domain: campaign.domain, leads: leads.length });
     await saveToSupermemory({
       campaignId: campaign.id,
       type: "agent_buyer_research",
@@ -115,6 +125,82 @@ async function researchCampaigns(store: AppStore, resolved: Required<AgentTickOp
   }
 
   return researched;
+}
+
+function leadContactInput(lead: BuyerLead) {
+  return {
+    company_name: lead.company_name,
+    website: lead.website,
+    current_domain: lead.current_domain,
+    buyer_category: lead.buyer_category,
+    fit_score: lead.fit_score,
+    reason_fit: lead.reason_fit,
+    current_domain_weakness: lead.current_domain_weakness,
+    contact_email: lead.contact_email,
+    contact_url: lead.contact_url,
+    contact_phone: lead.contact_phone,
+    phone_source_url: lead.phone_source_url,
+    decision_maker_name: lead.decision_maker_name,
+    decision_maker_role: lead.decision_maker_role,
+    source_url: lead.source_url,
+    outreach_angle: lead.outreach_angle,
+    next_action: lead.next_action,
+    status: lead.status,
+  };
+}
+
+async function enrichReachableContacts(store: AppStore, resolved: Required<AgentTickOptions>) {
+  if (resolved.maxContactEnrichmentPerTick <= 0) return [];
+
+  const enrichedContacts = [];
+  const leads = store.buyerLeads
+    .filter((lead) => !resolved.campaignId || lead.campaign_id === resolved.campaignId)
+    .filter((lead) => !lead.contact_email && !lead.contact_phone)
+    .filter((lead) => !["opted_out", "escalated", "deposit_requested"].includes(lead.status))
+    .sort((a, b) => b.fit_score - a.fit_score)
+    .slice(0, resolved.maxContactEnrichmentPerTick);
+
+  for (const lead of leads) {
+    try {
+      console.log("[agent] contact enrichment started", { campaignId: lead.campaign_id, leadId: lead.id, company: lead.company_name });
+      const enriched = await enrichLeadContact(leadContactInput(lead));
+      await updateLead(lead.id, {
+        contact_email: enriched.contact_email,
+        contact_url: enriched.contact_url,
+        contact_phone: enriched.contact_phone,
+        phone_source_url: enriched.phone_source_url,
+        decision_maker_name: enriched.decision_maker_name,
+        decision_maker_role: enriched.decision_maker_role,
+        reason_fit: enriched.reason_fit,
+        next_action: enriched.contact_email
+          ? "Public email found; outreach can be drafted."
+          : enriched.contact_phone
+            ? "Public phone found; phone outreach can be queued."
+            : "No public email or phone found yet.",
+      });
+      enrichedContacts.push({
+        campaign_id: lead.campaign_id,
+        buyer_lead_id: lead.id,
+        company_name: lead.company_name,
+        contact_email: enriched.contact_email,
+        contact_phone: enriched.contact_phone,
+      });
+      console.log("[agent] contact enrichment completed", {
+        campaignId: lead.campaign_id,
+        leadId: lead.id,
+        email: Boolean(enriched.contact_email),
+        phone: Boolean(enriched.contact_phone),
+      });
+    } catch (error) {
+      console.error("[agent] contact enrichment failed", {
+        campaignId: lead.campaign_id,
+        leadId: lead.id,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  return enrichedContacts;
 }
 
 async function prepareOutreachDrafts(store: AppStore, maxDrafts: number, campaignId = "") {
@@ -563,9 +649,12 @@ async function advanceNegotiations(store: AppStore, resolved: Required<AgentTick
 
 export async function runAgentTick(options: AgentTickOptions = {}) {
   const resolved = { ...defaultOptions(), ...options };
+  console.log("[agent] tick started", { campaignId: resolved.campaignId || "all" });
   const processedReplies = await pollAgentMailReplies();
   let store = await loadStore();
   const researchedCampaigns = await researchCampaigns(store, resolved);
+  store = await loadStore();
+  const enrichedContacts = researchedCampaigns.length > 0 ? [] : await enrichReachableContacts(store, resolved);
   store = await loadStore();
   const draftedOutreach = await prepareOutreachDrafts(store, resolved.maxDraftsPerTick, resolved.campaignId);
   store = await loadStore();
@@ -715,6 +804,7 @@ export async function runAgentTick(options: AgentTickOptions = {}) {
   return {
     processedReplies,
     researchedCampaigns,
+    enrichedContacts,
     followUps,
     sentFollowUps,
     sentFirstTouch: firstTouchResult.sentFirstTouch,
