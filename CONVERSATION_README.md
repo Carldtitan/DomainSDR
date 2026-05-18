@@ -706,3 +706,16 @@ Follow-up quality fix:
 - Added a source-backed nano/materials fallback list of real companies so `nano.ai` does not depend only on noisy search result pages.
 - Ranked source-backed vertical leads first and updated the activity feed to show highest-fit leads rather than insertion order.
 - Changed Apify timeout fallback logging from error to warning because source-backed fallback is now an expected recovery path.
+
+## End Runs Control
+
+The user then asked to be able to end active runs and to end all current runs.
+
+Implementation direction:
+
+- Added `POST /api/campaigns/[id]/end` to mark a run `closed`.
+- Added `POST /api/campaigns/end-all` to mark every active run `closed`.
+- Added an `End` button on each active run in the domain board.
+- Added an `End all` button in the domain board header.
+- Updated the live agent state so closed runs are terminal and display `Ended`.
+- Because the agent loop already skips `closed` and `paused` campaigns, ending a run stops future research, outreach, follow-up, and call work for that campaign.
