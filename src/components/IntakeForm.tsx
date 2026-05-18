@@ -2,16 +2,64 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2, Play } from "lucide-react";
+import { Check, Loader2, Play } from "lucide-react";
 import { buttonClass, FieldLabel, inputClass, Panel, StatusBadge } from "@/components/AppShell";
+
+type LaunchStep = "idle" | "creating" | "opening";
+
+function LaunchProgress({ step }: { step: LaunchStep }) {
+  if (step === "idle") return null;
+  const steps = [
+    {
+      id: "creating",
+      label: "Creating broker workspace",
+      detail: "Saving the domain, seller rules, and negotiation limits.",
+    },
+    {
+      id: "opening",
+      label: "Opening live agent run",
+      detail: "The next screen shows analysis, buyer research, outreach, and reply progress.",
+    },
+  ];
+
+  return (
+    <div className="rounded-md border border-cyan-300/30 bg-cyan-300/10 p-4">
+      <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-cyan-50">
+        <Loader2 className="animate-spin" size={16} />
+        Starting the agent
+      </div>
+      <div className="grid gap-3">
+        {steps.map((item) => {
+          const done = step === "opening" || item.id === step;
+          const active = item.id === step;
+          return (
+            <div key={item.id} className="flex gap-3">
+              <span
+                className={`mt-0.5 flex h-6 w-6 items-center justify-center rounded-full ${
+                  done ? "bg-cyan-300 text-slate-950" : "border border-white/15 bg-white/5"
+                }`}
+              >
+                {active ? <Loader2 className="animate-spin" size={14} /> : done ? <Check size={14} /> : null}
+              </span>
+              <span>
+                <span className="block text-sm font-medium text-white">{item.label}</span>
+                <span className="block text-xs leading-5 text-slate-400">{item.detail}</span>
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
 
 export function IntakeForm() {
   const router = useRouter();
-  const [pending, setPending] = useState<"campaign" | null>(null);
+  const [launchStep, setLaunchStep] = useState<LaunchStep>("idle");
   const [error, setError] = useState("");
 
   async function submit(formData: FormData) {
-    setPending("campaign");
+    setLaunchStep("creating");
     setError("");
     const payload = Object.fromEntries(formData.entries());
     const response = await fetch("/api/campaigns", {
@@ -20,11 +68,12 @@ export function IntakeForm() {
       body: JSON.stringify(payload),
     });
     const data = await response.json();
-    setPending(null);
     if (!response.ok) {
+      setLaunchStep("idle");
       setError(data.error || "Could not create campaign");
       return;
     }
+    setLaunchStep("opening");
     router.push(`/campaign/${data.campaign.id}/agent`);
   }
 
@@ -127,10 +176,11 @@ export function IntakeForm() {
           </div>
 
           {error ? <p className="rounded-md border border-red-400/30 bg-red-500/10 px-3 py-2 text-sm text-red-200">{error}</p> : null}
+          <LaunchProgress step={launchStep} />
 
-          <button className={buttonClass} disabled={Boolean(pending)} type="submit">
-            {pending === "campaign" ? <Loader2 className="animate-spin" size={16} /> : <Play size={16} />}
-            {pending === "campaign" ? "Launching broker and starting outreach..." : "Start Agent"}
+          <button className={buttonClass} disabled={launchStep !== "idle"} type="submit">
+            {launchStep !== "idle" ? <Loader2 className="animate-spin" size={16} /> : <Play size={16} />}
+            {launchStep !== "idle" ? "Opening live progress..." : "Start Agent"}
           </button>
         </form>
       </Panel>

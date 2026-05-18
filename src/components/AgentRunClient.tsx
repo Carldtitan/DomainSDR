@@ -36,6 +36,7 @@ export function AgentRunClient({ initialState }: { initialState: AgentRunState }
   const [state, setState] = useState(initialState);
   const [lastWake, setLastWake] = useState("");
   const [error, setError] = useState("");
+  const [wakeStatus, setWakeStatus] = useState<"starting" | "checking" | "working" | "idle">("starting");
   const runningRef = useRef(false);
   const stateRef = useRef(initialState);
 
@@ -57,6 +58,7 @@ export function AgentRunClient({ initialState }: { initialState: AgentRunState }
     async function wakeBroker() {
       if (runningRef.current) return;
       runningRef.current = true;
+      setWakeStatus("working");
       try {
         const response = await fetch(`/api/campaigns/${initialState.campaignId}/agent-work`, { method: "POST" });
         if (!response.ok) throw new Error("Broker wake failed");
@@ -75,20 +77,23 @@ export function AgentRunClient({ initialState }: { initialState: AgentRunState }
         }
       } finally {
         runningRef.current = false;
+        if (!stopped) setWakeStatus("idle");
       }
     }
 
     async function loop() {
       if (stopped) return;
       if (document.visibilityState === "visible") {
+        setWakeStatus("checking");
         const latest = await refresh().catch(() => stateRef.current);
         if (!stopped) applyState(latest);
         if (!latest.terminal) await wakeBroker();
+        else if (!stopped) setWakeStatus("idle");
       }
       if (!stopped) timer = setTimeout(loop, stateRef.current.terminal ? 15_000 : 30_000);
     }
 
-    timer = setTimeout(loop, 2_000);
+    timer = setTimeout(loop, 300);
     return () => {
       stopped = true;
       if (timer) clearTimeout(timer);
@@ -96,6 +101,16 @@ export function AgentRunClient({ initialState }: { initialState: AgentRunState }
   }, [applyState, initialState.campaignId]);
 
   const waiting = !state.terminal;
+  const currentAction =
+    wakeStatus === "starting"
+      ? "Opening the broker run."
+      : wakeStatus === "checking"
+        ? "Checking campaign state and new replies."
+        : wakeStatus === "working"
+          ? "Running the broker loop now: research, outreach, replies, follow-up, and deposits."
+          : waiting
+            ? "Waiting for the next wake or buyer reply."
+            : "Proof point reached.";
 
   return (
     <div className="mx-auto flex min-h-[calc(100vh-140px)] max-w-4xl flex-col justify-center py-8">
@@ -110,9 +125,12 @@ export function AgentRunClient({ initialState }: { initialState: AgentRunState }
           </div>
           <div className="flex items-center gap-2 rounded-md border border-white/10 bg-white/5 px-3 py-2 text-sm text-slate-200">
             {waiting ? <Loader2 className="animate-spin text-cyan-200" size={18} /> : <Check className="text-emerald-300" size={18} />}
-            {waiting ? "Working" : "Response reached"}
+            {wakeStatus === "working" ? "Agent running now" : waiting ? "Watching" : "Response reached"}
           </div>
         </div>
+        <p className="mt-5 rounded-md border border-cyan-300/20 bg-cyan-300/10 px-3 py-2 text-sm text-cyan-50">
+          Current action: {currentAction}
+        </p>
 
         <div className="mt-8 grid grid-cols-2 gap-3 sm:grid-cols-4">
           <div className="rounded-md border border-white/10 bg-slate-900 px-4 py-3">
