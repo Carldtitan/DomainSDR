@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { ArrowRight, Circle, CircleCheck, Clock, Loader2, Mail, Phone, Search, Square, XCircle } from "lucide-react";
+import { Circle, CircleCheck, Clock, Loader2, Mail, Phone, Search, Square, XCircle } from "lucide-react";
 import { Panel, secondaryButtonClass, StatusBadge } from "@/components/AppShell";
 import { compactDate, money } from "@/lib/format";
 import type { FullCampaign } from "@/lib/types";
@@ -63,7 +63,12 @@ export function RunBoard({ runs }: { runs: FullCampaign[] }) {
               {busy === "all" ? <Loader2 className="animate-spin" size={14} /> : <Square size={14} />}
               End all
             </button>
-          ) : null}
+          ) : (
+            <button className={`${secondaryButtonClass} px-3 py-1.5`} disabled type="button">
+              <XCircle size={14} />
+              All ended
+            </button>
+          )}
         </div>
       </div>
 
@@ -114,7 +119,10 @@ export function RunBoard({ runs }: { runs: FullCampaign[] }) {
                       End
                     </button>
                   ) : (
-                    <ArrowRight className="text-slate-400 transition group-hover:translate-x-0.5" size={16} />
+                    <span className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-slate-50 px-2 py-1 font-medium text-slate-500 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400">
+                      <XCircle size={13} />
+                      Ended
+                    </span>
                   )}
                 </div>
               </div>
