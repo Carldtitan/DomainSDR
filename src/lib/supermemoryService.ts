@@ -109,3 +109,51 @@ export async function saveWorkspaceSnapshot(content: string) {
     metadata: { snapshot: true },
   });
 }
+
+export async function saveEmailPatternMemory({
+  domain,
+  companyName,
+  pattern,
+  exampleEmail,
+  sourceUrl,
+}: {
+  domain: string;
+  companyName: string;
+  pattern: string;
+  exampleEmail: string;
+  sourceUrl?: string;
+}) {
+  const normalizedDomain = domain.toLowerCase().replace(/^www\./, "");
+  return saveToSupermemory({
+    campaignId: "workspace",
+    type: "email_pattern",
+    customId: `email_pattern_${normalizedDomain}_${pattern}`.replace(/[^a-z0-9_.-]/gi, "_"),
+    content: JSON.stringify(
+      {
+        domain: normalizedDomain,
+        companyName,
+        pattern,
+        exampleEmail,
+        sourceUrl,
+        note: "Use this only as a research hint. Do not send to guessed addresses unless verified on a public source.",
+      },
+      null,
+      2,
+    ),
+    metadata: {
+      domain: normalizedDomain,
+      companyName,
+      pattern,
+      exampleEmail,
+    },
+  });
+}
+
+export async function searchEmailPatternMemory(domainOrCompany: string) {
+  return searchSupermemoryContext({
+    campaignId: "workspace",
+    query: `public email format contact pattern for ${domainOrCompany}`,
+    limit: 3,
+    threshold: 0.25,
+  });
+}

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Check, Loader2, Phone, RefreshCw, Send, Sparkles } from "lucide-react";
+import { Check, Loader2, Mail, RefreshCw, Send, Search } from "lucide-react";
 import { StatusBadge } from "@/components/AppShell";
 import { compactDate } from "@/lib/format";
 import type { buildAgentRunState } from "@/lib/agentRunState";
@@ -27,9 +27,9 @@ function StageIcon({ state }: { state: string }) {
 }
 
 function activityIcon(title: string) {
-  if (title.includes("Outreach")) return <Send size={16} />;
-  if (title.includes("replied") || title.includes("responded")) return <Phone size={16} />;
-  return <Sparkles size={16} />;
+  if (title.includes("Email") || title.includes("Response")) return <Send size={16} />;
+  if (title.includes("Reply")) return <Mail size={16} />;
+  return <Search size={16} />;
 }
 
 export function AgentRunClient({ initialState }: { initialState: AgentRunState }) {
@@ -51,7 +51,7 @@ export function AgentRunClient({ initialState }: { initialState: AgentRunState }
 
     async function refresh() {
       const response = await fetch(`/api/campaigns/${initialState.campaignId}/agent-state`, { cache: "no-store" });
-      if (!response.ok) throw new Error("Could not refresh broker state");
+      if (!response.ok) throw new Error("Could not refresh status");
       return (await response.json()) as AgentRunState;
     }
 
@@ -61,7 +61,7 @@ export function AgentRunClient({ initialState }: { initialState: AgentRunState }
       setWakeStatus("working");
       try {
         const response = await fetch(`/api/campaigns/${initialState.campaignId}/agent-work`, { method: "POST" });
-        if (!response.ok) throw new Error("Broker wake failed");
+        if (!response.ok) throw new Error("Agent wake failed");
         const next = (await response.json()) as AgentRunState;
         if (!stopped) {
           applyState(next);
@@ -73,7 +73,7 @@ export function AgentRunClient({ initialState }: { initialState: AgentRunState }
           const next = await refresh();
           if (!stopped) applyState(next);
         } catch {
-          if (!stopped) setError(workError instanceof Error ? workError.message : "Broker wake failed");
+          if (!stopped) setError(workError instanceof Error ? workError.message : "Agent wake failed");
         }
       } finally {
         runningRef.current = false;
@@ -103,14 +103,14 @@ export function AgentRunClient({ initialState }: { initialState: AgentRunState }
   const waiting = !state.terminal;
   const currentAction =
     wakeStatus === "starting"
-      ? "Opening the broker run."
+      ? "Opening run."
       : wakeStatus === "checking"
-        ? "Checking campaign state and new replies."
+        ? "Checking status and replies."
         : wakeStatus === "working"
-          ? "Running the broker loop now: research, outreach, replies, follow-up, and deposits."
+          ? "Working now: buyers, outreach, replies, follow-up, deposits."
           : waiting
-            ? "Waiting for the next wake or buyer reply."
-            : "Proof point reached.";
+            ? "Waiting for the next wake or reply."
+            : "Reply or deposit reached.";
 
   return (
     <div className="mx-auto flex min-h-[calc(100vh-140px)] w-full max-w-5xl flex-col justify-center py-8">
@@ -129,7 +129,7 @@ export function AgentRunClient({ initialState }: { initialState: AgentRunState }
           </div>
         </div>
         <p className="mt-5 rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm dark:border-slate-800 dark:bg-slate-950 dark:text-slate-200">
-          Current action: {currentAction}
+          {currentAction}
         </p>
 
         <div className="mt-8 grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -142,7 +142,7 @@ export function AgentRunClient({ initialState }: { initialState: AgentRunState }
             <p className="mt-1 text-2xl font-semibold text-slate-950 dark:text-white">{state.counts.reachable}</p>
           </div>
           <div className="rounded-md border border-slate-200 bg-white px-4 py-3 shadow-sm dark:border-slate-800 dark:bg-slate-950">
-            <p className="text-xs text-slate-500 dark:text-slate-400">Emails or calls</p>
+            <p className="text-xs text-slate-500 dark:text-slate-400">Sent</p>
             <p className="mt-1 text-2xl font-semibold text-slate-950 dark:text-white">{state.counts.sent + state.counts.callsStarted}</p>
           </div>
           <div className="rounded-md border border-slate-200 bg-white px-4 py-3 shadow-sm dark:border-slate-800 dark:bg-slate-950">
@@ -155,7 +155,7 @@ export function AgentRunClient({ initialState }: { initialState: AgentRunState }
       <section className="grid gap-8 py-8 lg:grid-cols-[minmax(0,1fr)_320px]">
         <div>
           <div className="mb-4 flex items-center justify-between">
-            <h2 className="text-lg font-semibold text-slate-950 dark:text-white">Live Agent Loop</h2>
+            <h2 className="text-lg font-semibold text-slate-950 dark:text-white">Status</h2>
             <StatusBadge>{state.stage.replaceAll("_", " ")}</StatusBadge>
           </div>
           <div className="grid gap-4">
@@ -183,7 +183,7 @@ export function AgentRunClient({ initialState }: { initialState: AgentRunState }
 
         <aside>
           <div className="mb-4 flex items-center justify-between">
-            <h2 className="text-lg font-semibold text-slate-950 dark:text-white">What It Did</h2>
+            <h2 className="text-lg font-semibold text-slate-950 dark:text-white">Activity</h2>
             <RefreshCw className={waiting ? "animate-spin text-slate-500 dark:text-slate-300" : "text-emerald-500 dark:text-emerald-300"} size={18} />
           </div>
           <div className="grid gap-3">

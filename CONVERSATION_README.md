@@ -599,3 +599,31 @@ The key shift was this:
 - After: launching a campaign starts a guarded broker loop that works the campaign, wakes on events, follows up on timing, handles replies, and escalates when needed.
 
 That is the correct direction for the product. The next major step is durable always-on execution: hourly scheduling, queues, better observability, and safe phone/escrow integrations.
+
+## Plain Agent Console Pivot
+
+The user then asked for the remaining product surface to stop sounding like a SaaS dashboard.
+
+The critique was direct:
+
+- Too much explanatory copy.
+- Too many words that sounded generated or internal.
+- The landing page still needed a clearer view of current and past runs.
+- The owner may not be watching AgentMail, so important updates should also reach them by SMS.
+- Contact discovery should not stop when Apify misses an email.
+- Supermemory should remember useful company email formats across future runs.
+
+The product direction changed to a plain agent console:
+
+- The home page now fits the launch form and domain run board side by side on desktop.
+- The copy is shorter and more operational: `New run`, `Domains`, `Status`, `Activity`.
+- The run board shows each domain's current state: queued, researching, contacting, waiting, reply received, or deposit paid.
+- The live run screen now shows concise progress instead of long explanations.
+- The agent sends owner SMS updates only for meaningful events: first outreach sent, follow-up sent, reply handled, call started, deposit link sent, or deposit paid.
+- Browser Use is now a capped fallback for public contact discovery when direct fetch and Apify do not find a reachable email.
+- Supermemory stores verified public email patterns such as `first.last@` or `generic:sales@` as future research hints.
+
+The safety rule remains important:
+
+- Supermemory email patterns are memory, not permission to guess recipients.
+- The app should not send to a guessed email unless that address is verified from a public source.
