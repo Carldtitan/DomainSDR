@@ -105,6 +105,26 @@ async function createHostedAgent(campaign: DomainCampaign, lead: BuyerLead, poli
   return data.id as string;
 }
 
+async function createNotificationAgent(campaign: DomainCampaign) {
+  const response = await fetch(`${AGENTPHONE_BASE_URL}/v1/agents`, {
+    method: "POST",
+    headers: headers(),
+    body: JSON.stringify({
+      name: `DomainSDR updates ${campaign.domain}`,
+      description: `Owner updates for ${campaign.domain}`,
+      voiceMode: "hosted",
+      systemPrompt: `Send concise owner updates for the ${campaign.domain} domain sale run. Do not negotiate with buyers from this agent.`,
+      beginMessage: `DomainSDR update for ${campaign.domain}.`,
+      modelTier: "fast",
+    }),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || !data?.id) {
+    throw new Error(data?.message || data?.error || `Could not create AgentPhone notification agent: ${response.status}`);
+  }
+  return data.id as string;
+}
+
 export async function startAgentPhoneCall({
   campaign,
   lead,
@@ -192,8 +212,14 @@ export async function sendOwnerSmsUpdate({
   type?: string;
 }) {
   if (!configured()) return { ok: false, skipped: true, error: "AGENTPHONE_API_KEY is not configured" };
-  const agentId = process.env.AGENTPHONE_AGENT_ID;
-  if (!agentId) return { ok: false, skipped: true, error: "AGENTPHONE_AGENT_ID is not configured" };
+  let agentId = process.env.AGENTPHONE_AGENT_ID;
+  if (!agentId) {
+    try {
+      agentId = await createNotificationAgent(campaign);
+    } catch (error) {
+      return { ok: false, skipped: true, error: error instanceof Error ? error.message : "Could not create notification agent" };
+    }
+  }
 
   const toNumber = outboundPhoneRecipient();
   if (!allowExternalPhone(toNumber)) {

@@ -13,7 +13,7 @@ export async function GET() {
       apify: flag("APIFY_TOKEN"),
       agentMail: flag("AGENTMAIL_API_KEY") && flag("AGENTMAIL_INBOX_ID"),
       agentPhone: flag("AGENTPHONE_API_KEY"),
-      ownerSms: flag("AGENTPHONE_API_KEY") && flag("AGENTPHONE_AGENT_ID"),
+      ownerSms: flag("AGENTPHONE_API_KEY"),
       browserUse: flag("BROWSER_USE_API_KEY"),
       supermemory: flag("SUPERMEMORY_API_KEY"),
       stripe: flag("STRIPE_SECRET_KEY"),
