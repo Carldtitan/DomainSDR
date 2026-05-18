@@ -10,6 +10,7 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
 
   await runAgentTick({
     campaignId: id,
+    forceResearch: true,
     discoverBuyers: true,
     sendFirstTouch: true,
     sendNegotiationReplies: true,

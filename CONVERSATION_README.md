@@ -510,6 +510,26 @@ The product principle after this pivot:
 
 - Input once. Then wait while the agent works.
 
+## Launch Progress Pivot
+
+After the pure agent loop change, the user pointed out a real UX problem: pressing "Start Agent" did not show enough progress immediately.
+
+The issue was architectural:
+
+- The launch request was doing too much backend work before navigation.
+- The user stayed on the form while the server analyzed the domain and started the broker loop.
+- That made the app feel frozen even though work was happening.
+
+The fix direction:
+
+- Make campaign creation fast.
+- Move domain analysis, buyer research, outreach, reply checks, and follow-up into the live agent screen.
+- Show a visible launch progress panel as soon as "Start Agent" is pressed.
+- Redirect quickly to the live agent run.
+- On the live agent screen, show the current action: checking state, running the broker loop, researching, sending, waiting, or proof point reached.
+
+This is more agentic because the user is no longer waiting on a hidden form submission. They see the broker run as a live process.
+
 ## Integration and Partnership Opportunities
 
 The app should avoid reinventing:
