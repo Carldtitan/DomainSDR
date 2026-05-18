@@ -525,6 +525,28 @@ function pendingNegotiationEvents(store: AppStore, campaignId = "") {
     });
 }
 
+function isPositiveReengagement(event: ConversationEvent) {
+  if (["opt_out", "not_interested"].includes(event.classification)) return false;
+  return /\b(yes|interested|proceed|move forward|go ahead|send (the )?(link|invoice)|checkout|deposit|buy|purchase|offer|works for me|sounds good)\b|\$\s*\d/i.test(
+    event.body,
+  );
+}
+
+function blockingNegotiationSuppression(store: AppStore, campaign: DomainCampaign, lead: BuyerLead, event: ConversationEvent) {
+  const leadEmail = lead.contact_email.toLowerCase();
+  const suppression = store.suppressions
+    .filter(
+      (item) =>
+        item.campaign_id === campaign.id &&
+        (item.buyer_lead_id === lead.id || (leadEmail && item.email?.toLowerCase() === leadEmail)),
+    )
+    .sort((a, b) => b.created_at.localeCompare(a.created_at))[0];
+
+  if (!suppression) return undefined;
+  if (event.created_at > suppression.created_at && isPositiveReengagement(event)) return undefined;
+  return suppression;
+}
+
 function depositReplyBody(campaign: DomainCampaign, draftBody: string, paymentLink: string) {
   return `${draftBody}
 
@@ -652,8 +674,9 @@ async function advanceNegotiations(store: AppStore, resolved: Required<AgentTick
       continue;
     }
 
-    if (await isSuppressed(campaign.id, lead.id, lead.contact_email || outboundEmailRecipient(lead.contact_email))) {
-      skippedNegotiations.push({ event_id: event.id, buyer_lead_id: lead.id, reason: "suppressed" });
+    const suppression = blockingNegotiationSuppression(store, campaign, lead, event);
+    if (suppression) {
+      skippedNegotiations.push({ event_id: event.id, buyer_lead_id: lead.id, reason: `suppressed: ${suppression.reason}` });
       continue;
     }
 
