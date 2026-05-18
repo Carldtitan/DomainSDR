@@ -1,9 +1,9 @@
 import crypto from "node:crypto";
-import { addConversationEvent, hasProcessedWebhookEvent, markProcessedWebhookEvent, updateLead } from "@/lib/campaignStore";
+import { addConversationEvent, hasProcessedWebhookEvent, loadStore, markProcessedWebhookEvent, updateLead } from "@/lib/campaignStore";
 import { outboundPhoneRecipient } from "@/lib/contactRouting";
 import { processInboundAgentMessage } from "@/lib/brokerAgentService";
 import { saveToSupermemory } from "@/lib/supermemoryService";
-import type { BuyerLead, DomainCampaign, NegotiationPolicy } from "@/lib/types";
+import type { BuyerLead, DomainCampaign, NegotiationPolicy, Offer } from "@/lib/types";
 
 const AGENTPHONE_BASE_URL = "https://api.agentphone.ai";
 
@@ -81,6 +81,34 @@ Style:
 - Sound like a concise human broker.
 - Keep each spoken answer under 45 seconds.
 - Ask one clear next-step question at a time.`;
+}
+
+function schedulingSystemPrompt(campaign: DomainCampaign, lead: BuyerLead, policy: NegotiationPolicy, offer: Offer) {
+  return `You are DomainSDR, a careful domain broker agent representing ${campaign.owner_name}.
+
+Domain: ${campaign.domain}
+Buyer: ${lead.company_name}
+Accepted sale amount: $${offer.amount}
+Deposit amount: $${policy.deposit_amount}
+Deposit status: paid
+
+Your only job is to schedule a short handoff call between ${campaign.owner_name} and the buyer.
+
+Availability:
+- ${campaign.owner_name} is free any time this weekend.
+- Ask the buyer for a Saturday or Sunday time and timezone.
+- Confirm one proposed time.
+
+Hard rules:
+- Do not renegotiate price.
+- Do not claim the domain transfer is complete.
+- Say the actual domain transfer should run through escrow or a trusted marketplace.
+- If they ask legal/trademark questions, recommend counsel.
+
+Style:
+- Sound like a concise human coordinator.
+- Ask one clear question at a time.
+- Keep each spoken answer under 30 seconds.`;
 }
 
 async function createHostedAgent(campaign: DomainCampaign, lead: BuyerLead, policy: NegotiationPolicy) {
@@ -202,6 +230,107 @@ export async function startAgentPhoneCall({
   }
 }
 
+export async function startAgentPhoneSchedulingCall({
+  campaign,
+  lead,
+  policy,
+  offer,
+  toNumber = outboundPhoneRecipient(),
+}: {
+  campaign: DomainCampaign;
+  lead: BuyerLead;
+  policy: NegotiationPolicy;
+  offer: Offer;
+  toNumber?: string;
+}) {
+  if (!configured()) return { ok: false, error: "AGENTPHONE_API_KEY is not configured" };
+  if (!allowExternalPhone(toNumber)) {
+    return {
+      ok: false,
+      error: "External outbound calls are disabled. Use CONTACT_OVERRIDE_PHONE or set ALLOW_EXTERNAL_PHONE_OUTBOUND=true.",
+    };
+  }
+
+  let agentId = process.env.AGENTPHONE_AGENT_ID;
+  if (!agentId) {
+    try {
+      const response = await fetch(`${AGENTPHONE_BASE_URL}/v1/agents`, {
+        method: "POST",
+        headers: headers(),
+        body: JSON.stringify({
+          name: `DomainSDR scheduling ${campaign.domain}`,
+          description: `Post-deposit scheduling agent for ${campaign.domain}`,
+          voiceMode: "hosted",
+          systemPrompt: schedulingSystemPrompt(campaign, lead, policy, offer),
+          beginMessage: `Hi, this is DomainSDR following up after the deposit for ${campaign.domain}. Carl is free this weekend. What time works for a handoff call?`,
+          modelTier: "balanced",
+          sttMode: "accurate",
+          denoisingMode: "noise-cancellation",
+        }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data?.id) {
+        throw new Error(data?.message || data?.error || `Could not create AgentPhone scheduling agent: ${response.status}`);
+      }
+      agentId = data.id as string;
+    } catch (error) {
+      return { ok: false, error: error instanceof Error ? error.message : "Could not create AgentPhone scheduling agent." };
+    }
+  }
+
+  const body = {
+    agentId,
+    toNumber,
+    initialGreeting: `Hi, this is DomainSDR following up after the deposit for ${campaign.domain}. Carl is free this weekend. What time works for a handoff call?`,
+    systemPrompt: schedulingSystemPrompt(campaign, lead, policy, offer),
+    metadata: {
+      app: "DomainSDR",
+      purpose: "post_deposit_scheduling",
+      campaignId: campaign.id,
+      leadId: lead.id,
+      offerId: offer.id,
+      domain: campaign.domain,
+      buyer: lead.company_name,
+      discoveredBuyerPhone: lead.contact_phone || "",
+    },
+  };
+
+  try {
+    const response = await fetch(`${AGENTPHONE_BASE_URL}/v1/calls`, {
+      method: "POST",
+      headers: headers(),
+      body: JSON.stringify(body),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      return { ok: false, error: data?.message || data?.error || `AgentPhone ${response.status}`, data };
+    }
+
+    await addConversationEvent({
+      campaign_id: campaign.id,
+      buyer_lead_id: lead.id,
+      channel: "phone",
+      direction: "outbound",
+      body: `Post-deposit scheduling call started to ${toNumber}. Buyer phone on file: ${lead.contact_phone || "not provided"}.`,
+      classification: "system_note",
+      offer_amount: offer.amount,
+      next_action: "Weekend handoff scheduling call started.",
+      external_call_id: data?.id || data?.callId,
+      external_conversation_id: data?.conversationId,
+    });
+    await updateLead(lead.id, { status: "deposit_requested", next_action: "AgentPhone is booking a weekend handoff call." });
+    await saveToSupermemory({
+      campaignId: campaign.id,
+      type: "agentphone_post_deposit_scheduling_started",
+      content: JSON.stringify({ lead, offer, body, data }, null, 2),
+    });
+
+    return { ok: true, data };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : "Unknown AgentPhone error" };
+  }
+}
+
 export async function sendOwnerSmsUpdate({
   campaign,
   body,
@@ -272,6 +401,72 @@ function webhookId(payload: AgentPhoneWebhook) {
   return payload.id || payload.messageId || payload.message?.id || payload.callId || payload.call?.id || crypto.randomUUID();
 }
 
+function proposedWeekendTime(text: string) {
+  const match = text.match(/\b(?:sat(?:urday)?|sun(?:day)?)[^.\n,;]*(?:\d{1,2}(?::\d{2})?\s*(?:am|pm)?|morning|afternoon|evening|noon)[^.\n,;]*/i);
+  return match?.[0]?.trim() || "";
+}
+
+async function handleSchedulingWebhook(payload: AgentPhoneWebhook, text: string) {
+  const campaignId = payload.metadata?.campaignId || payload.conversationState?.campaignId;
+  const leadId = payload.metadata?.leadId || payload.conversationState?.leadId;
+  const store = await loadStore();
+  const campaign = store.campaigns.find((item) => item.id === campaignId);
+  const lead = store.buyerLeads.find((item) => item.id === leadId);
+  if (!campaign || !lead) {
+    return {
+      ok: false,
+      responseText: "I can help schedule the handoff, but I need the domain or company context first.",
+      error: "No campaign or lead could be matched for scheduling.",
+    };
+  }
+
+  const slot = proposedWeekendTime(text);
+  const responseText = slot
+    ? `Confirmed. I will pass along ${slot} as the proposed weekend handoff time. The actual domain transfer should still run through escrow or a trusted marketplace.`
+    : `Carl is free any time Saturday or Sunday. What time and timezone should I put down for the handoff call?`;
+
+  const inbound = await addConversationEvent({
+    campaign_id: campaign.id,
+    buyer_lead_id: lead.id,
+    channel: payload.type?.toLowerCase().includes("sms") || payload.event?.toLowerCase().includes("sms") ? "sms" : "phone",
+    direction: "inbound",
+    body: text,
+    classification: "system_note",
+    next_action: slot ? "Weekend handoff time proposed." : "Await buyer weekend time and timezone.",
+    external_message_id: payload.messageId || payload.message?.id,
+    external_conversation_id: payload.conversationId,
+    external_call_id: payload.callId || payload.call?.id,
+  });
+  const outbound = await addConversationEvent({
+    campaign_id: campaign.id,
+    buyer_lead_id: lead.id,
+    channel: inbound.channel,
+    direction: "outbound",
+    body: responseText,
+    classification: "system_note",
+    next_action: slot ? "Owner and buyer handoff needs calendar confirmation." : "Await buyer weekend time and timezone.",
+    external_conversation_id: payload.conversationId,
+    external_call_id: payload.callId || payload.call?.id,
+  });
+
+  await updateLead(lead.id, {
+    status: "deposit_requested",
+    next_action: slot ? `Proposed weekend handoff: ${slot}` : "Waiting for buyer weekend time and timezone.",
+  });
+  await saveToSupermemory({
+    campaignId: campaign.id,
+    type: "agentphone_post_deposit_scheduling_turn",
+    content: JSON.stringify({ lead, inbound, outbound, slot }, null, 2),
+  });
+
+  return {
+    ok: true,
+    campaign,
+    lead,
+    responseText,
+  };
+}
+
 export async function handleAgentPhoneWebhook(rawBody: string, signature?: string | null) {
   if (!verifySignature(rawBody, signature)) {
     return { status: 401, body: { error: "Invalid AgentPhone signature" } };
@@ -288,6 +483,23 @@ export async function handleAgentPhoneWebhook(rawBody: string, signature?: strin
 
   if (!text) {
     return { status: 200, body: { ok: true, ignored: true } };
+  }
+
+  if (payload.metadata?.purpose === "post_deposit_scheduling") {
+    const result = await handleSchedulingWebhook(payload, text);
+    return {
+      status: result.ok ? 200 : 422,
+      body: {
+        ok: result.ok,
+        text: result.responseText,
+        response: result.responseText,
+        conversationState: {
+          campaignId: result.campaign?.id,
+          leadId: result.lead?.id,
+        },
+        error: result.error,
+      },
+    };
   }
 
   const result = await processInboundAgentMessage({

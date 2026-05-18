@@ -19,6 +19,7 @@ import { analyzeDomain, generateFollowUpEmail, generateOutboundEmail } from "@/l
 import { generateNegotiationReply } from "@/lib/negotiationEngine";
 import { createDepositLink } from "@/lib/paymentService";
 import { reconcileLeadFromReplyBody } from "@/lib/leadIdentity";
+import { advancePostDepositHandoffs } from "@/lib/postDepositService";
 import { saveToSupermemory, saveWorkspaceSnapshot } from "@/lib/supermemoryService";
 import { sendOwnerSmsUpdate, startAgentPhoneCall } from "@/lib/agentPhoneService";
 import type { AppStore, BuyerLead, ConversationEvent, DomainCampaign, NegotiationPolicy, OutboundMessage } from "@/lib/types";
@@ -714,6 +715,8 @@ export async function runAgentTick(options: AgentTickOptions = {}) {
   console.log("[agent] tick started", { campaignId: resolved.campaignId || "all" });
   const processedReplies = await pollAgentMailReplies();
   let store = await loadStore();
+  const postDepositHandoffs = await advancePostDepositHandoffs(store, resolved.campaignId);
+  store = await loadStore();
   const negotiationSendsRemaining = Math.max(
     0,
     resolved.maxDailyNegotiationSends - negotiationRepliesSentToday(store.outboundMessages, resolved.campaignId),
@@ -865,6 +868,7 @@ export async function runAgentTick(options: AgentTickOptions = {}) {
 
   return {
     processedReplies,
+    postDepositHandoffs,
     researchedCampaigns,
     enrichedContacts,
     followUps,
