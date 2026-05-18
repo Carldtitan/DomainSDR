@@ -703,3 +703,4 @@ Follow-up quality fix:
 - Buyer filtering was tightened to reject directory/list/careers/course/accelerator/portfolio results.
 - Nano-specific scoring now rewards materials, semiconductor, nanotech, biotech, discovery, simulation, and materials-informatics relevance.
 - Discovery now searches four focused queries and can refresh campaigns with fewer than 15 leads.
+- Added a source-backed nano/materials fallback list of real companies so `nano.ai` does not depend only on noisy search result pages.

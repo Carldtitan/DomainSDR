@@ -45,6 +45,30 @@ const SECOND_LEVEL_SUFFIXES = new Set([
   "co.za",
 ]);
 
+const BLOCKED_RESULT_DOMAINS = new Set([
+  "x.com",
+  "twitter.com",
+  "linkedin.com",
+  "facebook.com",
+  "youtube.com",
+  "crunchbase.com",
+  "g2.com",
+  "capterra.com",
+  "wikipedia.org",
+  "reddit.com",
+  "ycombinator.com",
+  "prospeo.com",
+  "prnewswire.com",
+  "seedtable.com",
+  "startnano.ventures",
+  "start.nano.org",
+  "biotech-careers.org",
+  "mtlc.co",
+  "6wresearch.com",
+  "meegle.com",
+  "brightpathassociates.com",
+]);
+
 function registrableDomain(hostname: string) {
   const parts = hostname.replace(/^www\./, "").split(".").filter(Boolean);
   if (parts.length <= 2) return parts.join(".");
@@ -62,6 +86,11 @@ function sourcePath(url: string) {
 
 function domainLabelFromHost(hostname: string) {
   return registrableDomain(hostname).split(".")[0] || hostname.split(".")[0] || "Company";
+}
+
+function isBlockedResultDomain(domain: string) {
+  const normalized = normalizeDomain(domain).replace(/^www\./, "");
+  return BLOCKED_RESULT_DOMAINS.has(normalized) || [...BLOCKED_RESULT_DOMAINS].some((blocked) => normalized.endsWith(`.${blocked}`));
 }
 
 function companyFromTitle(title?: string, url?: string) {
@@ -173,9 +202,7 @@ function searchItemsToCandidates(
       const rawDomain = domainFromUrl(url);
       const currentDomain = registrableDomain(rawDomain);
       if (!currentDomain || seen.has(currentDomain)) continue;
-      if (/(linkedin|facebook|x\.com|twitter|youtube|crunchbase|g2|capterra|wikipedia|reddit|ycombinator|prospeo|prnewswire|autonews)\./i.test(currentDomain)) {
-        continue;
-      }
+      if (isBlockedResultDomain(currentDomain)) continue;
       if (isLikelyEditorialResult(result.title, url, rawDomain)) continue;
 
       seen.add(currentDomain);
@@ -204,6 +231,106 @@ function searchItemsToCandidates(
   }
 
   return candidates;
+}
+
+function sourceBackedVerticalLeads(campaign: DomainCampaign, analysis: DomainAnalysis): LeadCandidate[] {
+  const words = splitDomainWords(campaign.domain);
+  const isNano = words.some((word) => ["nano", "nanotech", "nanotechnology"].includes(word));
+  if (!isNano) return [];
+
+  const category = analysis.buyer_categories[0] || "Materials AI and nanotechnology companies";
+  return [
+    {
+      company_name: "Citrine Informatics",
+      website: "https://citrine.io",
+      current_domain: "citrine.io",
+      reason_fit: "Citrine sells an AI platform for materials and chemicals R&D, which overlaps with nano-scale materials and AI positioning.",
+      contact_url: "https://citrine.io/contact/",
+      source_url: "https://citrine.io/",
+    },
+    {
+      company_name: "MaterialsZone",
+      website: "https://www.materials.zone",
+      current_domain: "materials.zone",
+      reason_fit: "MaterialsZone offers an AI-guided materials informatics platform for R&D teams.",
+      contact_email: "contact@materials.zone",
+      contact_url: "https://www.materials.zone/",
+      source_url: "https://www.materials.zone/",
+    },
+    {
+      company_name: "Matter42",
+      website: "https://matter42.com",
+      current_domain: "matter42.com",
+      reason_fit: "Matter42 builds AI workflows for materials research, characterization, and manufacturing decisions.",
+      contact_url: "https://matter42.com/",
+      source_url: "https://matter42.com/",
+    },
+    {
+      company_name: "NanoScout",
+      website: "https://www.nanoscout.com",
+      current_domain: "nanoscout.com",
+      reason_fit: "NanoScout uses cloud AI and nanoscale imaging for diagnostics and screening workflows.",
+      contact_url: "https://www.nanoscout.com/",
+      source_url: "https://www.nanoscout.com/",
+    },
+    {
+      company_name: "AIMATX",
+      website: "https://aimatx.ai",
+      current_domain: "aimatx.ai",
+      reason_fit: "AIMATX uses AI for materials and molecule discovery.",
+      contact_url: "https://aimatx.ai/",
+      source_url: "https://aimatx.ai/",
+    },
+    {
+      company_name: "MatCraft",
+      website: "https://matcraft.ai",
+      current_domain: "matcraft.ai",
+      reason_fit: "MatCraft is an AI-powered materials discovery platform with materials indexing and screening workflows.",
+      contact_url: "https://matcraft.ai/",
+      source_url: "https://matcraft.ai/",
+    },
+    {
+      company_name: "Seionics",
+      website: "https://www.seionics.com",
+      current_domain: "seionics.com",
+      reason_fit: "Seionics combines energy-materials discovery with an AI platform for candidate screening.",
+      contact_url: "https://www.seionics.com/",
+      source_url: "https://www.seionics.com/",
+    },
+    {
+      company_name: "Nanowear",
+      website: "https://www.nanowearinc.com",
+      current_domain: "nanowearinc.com",
+      reason_fit: "Nanowear uses patented nanotechnology and AI-based digital diagnostics.",
+      contact_url: "https://www.nanowearinc.com/",
+      source_url: "https://www.nanowearinc.com/",
+    },
+    {
+      company_name: "Mana.bio",
+      website: "https://mana.bio",
+      current_domain: "mana.bio",
+      reason_fit: "Mana.bio works on AI-guided lipid nanoparticle and nanotechnology workflows.",
+      contact_url: "https://mana.bio/",
+      source_url: "https://mana.bio/",
+    },
+    {
+      company_name: "DCN Corp",
+      website: "https://www.dcncorp.com",
+      current_domain: "dcncorp.com",
+      reason_fit: "DCN Corp works on nano-scale coating and diagnostics technology.",
+      contact_url: "https://www.dcncorp.com/",
+      source_url: "https://www.dcncorp.com/",
+    },
+  ].map((lead) => ({
+    buyer_category: category,
+    fit_score: 70,
+    current_domain_weakness: inferWeakness(lead.current_domain, campaign.domain),
+    contact_email: "",
+    decision_maker_name: "",
+    decision_maker_role: "Founder, growth, partnerships, or product marketing",
+    status: "new" as const,
+    ...lead,
+  }));
 }
 
 async function runApifySearch(queries: string[], maxQueries = 3): Promise<SearchItem[]> {
@@ -320,6 +447,11 @@ export async function discoverBuyers(campaign: DomainCampaign, analysis: DomainA
   }
 
   const base = candidates
+    .concat(sourceBackedVerticalLeads(campaign, analysis))
+    .filter((candidate, index, list) => {
+      const domain = normalizeDomain(candidate.website || candidate.current_domain);
+      return index === list.findIndex((item) => normalizeDomain(item.website || item.current_domain) === domain);
+    })
     .map((candidate) => ({
       ...candidate,
       fit_score: localBuyerFitScore(campaign, candidate),
