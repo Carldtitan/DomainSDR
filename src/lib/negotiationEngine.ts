@@ -87,6 +87,17 @@ ${signature(campaign)}`,
   }
 
   if (replyClass === "asks_payment_plan") {
+    if (/\b(no|not|without|don't want|do not want)\b.{0,40}\b(payment plan|installments?|monthly|lease)\b/i.test(replyBody)) {
+      return {
+        body: `No problem. We can keep this as a direct sale for ${campaign.domain}. The ask is ${money(policy.ask_price)}, and transfer should run through escrow or a trusted marketplace.
+
+If ${company} wants to proceed, I can send a ${money(policy.deposit_amount)} deposit link to confirm intent.
+
+${signature(campaign)}`,
+        next_action: "Buyer prefers direct sale; await confirmation to send deposit link.",
+      };
+    }
+
     if (!policy.allow_payment_plan) {
       return {
         body: `I am keeping this simple as a direct sale for now. The ask is ${money(policy.ask_price)}, with transfer handled through escrow or a trusted marketplace.
@@ -107,7 +118,7 @@ ${signature(campaign)}`,
   }
 
   if (replyClass === "asks_price" || (!amount && replyClass === "interested")) {
-    const buyerWantsNextStep = /\b(buy|purchase|move forward|go ahead|send (the )?link|checkout|invoice|pay|deposit)\b/i.test(replyBody);
+    const buyerWantsNextStep = /\b(buy|purchase|move forward|go ahead|proceed|send (the )?(link|invoice)|checkout|invoice|pay|deposit|let'?s do it|sounds good|works for me|yes please)\b/i.test(replyBody);
     if (buyerWantsNextStep) {
       return {
         body: `Thanks. The ask for ${campaign.domain} is ${money(policy.ask_price)}.

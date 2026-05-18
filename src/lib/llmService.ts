@@ -409,7 +409,7 @@ export function classifyReplyFallback(text: string): ReplyClassification {
 
 export async function classifyReply(reply: string): Promise<ReplyClassification> {
   const fallback = classifyReplyFallback(reply);
-  return generateJson<ReplyClassification>(
+  const generated = await generateJson<ReplyClassification>(
     `Classify this buyer reply for a domain sale negotiation.
 
 Reply:
@@ -431,4 +431,33 @@ Extract only explicit offer amounts. Do not infer a price if none is present.`,
     fallback,
     0.1,
   );
+
+  const lower = reply.toLowerCase();
+  const explicitOptOut = /unsubscribe|opt out|remove me|do not email|don't email|stop contacting/.test(lower);
+  const explicitDecline = /not interested|no thanks|pass\b|not a fit/.test(lower);
+
+  if (generated.classification === "opt_out" && !explicitOptOut) {
+    if (explicitDecline) return { ...generated, classification: "not_interested" };
+    return {
+      ...fallback,
+      classification: fallback.classification === "opt_out" ? "other" : fallback.classification,
+      next_action: fallback.classification === "opt_out" ? "Do not suppress unless the buyer explicitly opts out." : fallback.next_action,
+      explanation: `Corrected non-explicit opt-out classification. ${fallback.explanation}`,
+    };
+  }
+
+  if (
+    generated.classification === "not_interested" &&
+    !explicitDecline &&
+    /\b(no|not|without|don't want|do not want)\b.{0,40}\b(payment plan|installments?|monthly|lease)\b/i.test(reply)
+  ) {
+    return {
+      ...generated,
+      classification: "asks_payment_plan",
+      next_action: "Buyer declined payment-plan structure; keep direct sale path open.",
+      explanation: "The buyer rejected a payment plan, not the domain purchase.",
+    };
+  }
+
+  return generated;
 }

@@ -786,3 +786,25 @@ Clarification:
 Important product note:
 
 - The app is not letting the LLM freely negotiate. The LLM identifies buyer intent; the deterministic policy engine decides the allowed response.
+
+## Stripe Link Debug
+
+The user then asked why the current run had not sent a Stripe link.
+
+Investigation:
+
+- The active run was `website.com`.
+- The latest buyer reply was `Yes, please proceed.`
+- A prior reply in the same thread said `No payment plan.`
+- Gemini classified `No payment plan.` as `opt_out`.
+- That created a suppression record for the lead.
+- The later `Yes, please proceed.` reply was matched correctly, but the negotiation sender skipped it because the lead was already suppressed.
+- Separately, the phrase `please proceed` was not included in the deposit-ready phrase matcher, so even without suppression it could have fallen back to another pricing response.
+
+Fix direction:
+
+- Do not treat non-explicit opt-out text as an opt-out.
+- Treat `No payment plan` as a payment-structure objection, not a request to stop contact.
+- Treat `proceed`, `yes please`, and similar buying phrases as deposit-ready.
+- Allow a later explicit positive re-engagement to override a prior suppression for negotiation replies only.
+- Keep normal opt-out suppression for first-touch and follow-up outreach.
