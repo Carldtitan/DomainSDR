@@ -111,7 +111,7 @@ export function buildAgentRunState(full: FullCampaign) {
       title: "Started",
       detail: `${full.campaign.domain}`,
     },
-    ...full.leads.slice(0, 8).map((lead) => ({
+    ...[...full.leads].sort((a, b) => b.fit_score - a.fit_score).slice(0, 8).map((lead) => ({
       id: lead.id,
       at: lead.created_at,
       title: lead.company_name,

@@ -67,6 +67,7 @@ const BLOCKED_RESULT_DOMAINS = new Set([
   "6wresearch.com",
   "meegle.com",
   "brightpathassociates.com",
+  "instagram.com",
 ]);
 
 function registrableDomain(hostname: string) {
@@ -119,10 +120,11 @@ function companyFromTitle(title?: string, url?: string) {
 function isLikelyEditorialResult(title: string | undefined, url: string, domain: string) {
   const path = sourcePath(url);
   const text = `${title || ""} ${domain} ${path}`.toLowerCase();
+  if (/^(nanotechnology|artificial intelligence|materials informatics|ai|nano)$/i.test((title || "").trim())) return true;
   return (
     /\b(top|best)\s+\d+\b/.test(text) ||
     /\b(best|top)\b.{0,100}\b(companies|startups|software|tools|platforms|solutions)\b/.test(text) ||
-    /\b(list of|companies in|companies for|market report|industry trends|guide|blog|case study|wikipedia|reddit|pilot shows|new ai engine|careers|jobs|course|education|training|conference|accelerator|portfolio|directory)\b/.test(text) ||
+    /\b(list of|companies in|companies for|market report|market outlook|asset profile|industry trends|guide|blog|case study|wikipedia|reddit|instagram|pilot shows|new ai engine|careers|jobs|course|education|training|conference|accelerator|portfolio|directory)\b/.test(text) ||
     CONTENT_PATH_PATTERN.test(path) ||
     /(seedtable|start\.nano|biotech-careers|mtlc|n-ix|medium|forbes|techcrunch|builtin|g2|capterra|wikipedia|reddit|statista|autoremarketing|autonews|capacity|support\.billsby|linkedin|facebook|ycombinator|prospeo|prnewswire|dealershipguy)\./.test(text)
   );
@@ -323,7 +325,7 @@ function sourceBackedVerticalLeads(campaign: DomainCampaign, analysis: DomainAna
     },
   ].map((lead) => ({
     buyer_category: category,
-    fit_score: 70,
+    fit_score: 96,
     current_domain_weakness: inferWeakness(lead.current_domain, campaign.domain),
     contact_email: "",
     decision_maker_name: "",
@@ -446,15 +448,15 @@ export async function discoverBuyers(campaign: DomainCampaign, analysis: DomainA
     candidates = [];
   }
 
-  const base = candidates
-    .concat(sourceBackedVerticalLeads(campaign, analysis))
+  const base = sourceBackedVerticalLeads(campaign, analysis)
+    .concat(candidates)
     .filter((candidate, index, list) => {
       const domain = normalizeDomain(candidate.website || candidate.current_domain);
       return index === list.findIndex((item) => normalizeDomain(item.website || item.current_domain) === domain);
     })
     .map((candidate) => ({
       ...candidate,
-      fit_score: localBuyerFitScore(campaign, candidate),
+      fit_score: Math.max(candidate.fit_score || 0, localBuyerFitScore(campaign, candidate)),
       status: "scored" as const,
     }))
     .sort((a, b) => b.fit_score - a.fit_score)
