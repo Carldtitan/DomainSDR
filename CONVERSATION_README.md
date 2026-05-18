@@ -620,6 +620,7 @@ The product direction changed to a plain agent console:
 - The run board shows each domain's current state: queued, researching, contacting, waiting, reply received, or deposit paid.
 - The live run screen now shows concise progress instead of long explanations.
 - The agent sends owner SMS updates only for meaningful events: first outreach sent, follow-up sent, reply handled, call started, deposit link sent, or deposit paid.
+- If no fixed `AGENTPHONE_AGENT_ID` is configured, the app creates a lightweight AgentPhone sender for owner updates instead of dropping the SMS update.
 - Browser Use is now a capped fallback for public contact discovery when direct fetch and Apify do not find a reachable email.
 - Supermemory stores verified public email patterns such as `first.last@` or `generic:sales@` as future research hints.
 
