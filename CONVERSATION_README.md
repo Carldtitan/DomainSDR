@@ -808,3 +808,25 @@ Fix direction:
 - Treat `proceed`, `yes please`, and similar buying phrases as deposit-ready.
 - Allow a later explicit positive re-engagement to override a prior suppression for negotiation replies only.
 - Keep normal opt-out suppression for first-touch and follow-up outreach.
+
+## Post-Deposit Handoff Pivot
+
+The user then asked what the run does after a deposit is paid.
+
+The desired post-payment behavior:
+
+- After Stripe marks the deposit as paid, the broker should not stop at `deposit_paid`.
+- AgentMail should ask the buyer for a phone number and a weekend time for a handoff call.
+- The seller is considered free any time Saturday or Sunday for now.
+- Once a buyer phone number is known, AgentPhone should call to coordinate the meeting time.
+- The actual domain transfer should still be described as escrow or trusted-marketplace based.
+
+Implementation direction:
+
+- Added a post-deposit handoff service.
+- Stripe webhook and mock checkout now trigger the handoff step after setting `deposit_paid`.
+- The handoff email is sent in the existing AgentMail thread when possible.
+- The email asks for phone number, weekend availability, and timezone.
+- The agent tick now checks paid deposits, so a later AgentMail reply containing a phone number can start the AgentPhone scheduling call.
+- AgentPhone has a dedicated post-deposit scheduling prompt that does not renegotiate price and only books a handoff time.
+- AgentPhone webhook handling can capture a proposed Saturday/Sunday time and record it in campaign history.

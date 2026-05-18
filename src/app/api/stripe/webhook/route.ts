@@ -11,6 +11,7 @@ import {
 } from "@/lib/campaignStore";
 import { sendOwnerSmsUpdate } from "@/lib/agentPhoneService";
 import { money } from "@/lib/format";
+import { ensurePostDepositHandoff } from "@/lib/postDepositService";
 import { saveToSupermemory } from "@/lib/supermemoryService";
 import { getStripe } from "@/lib/stripeClient";
 
@@ -57,7 +58,21 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
     body: `${full.campaign.domain}: deposit paid. Sale amount ${money(offer.amount)}. Set up escrow or marketplace transfer.`,
   });
 
-  return { offer: updatedOffer, event };
+  const refreshed = await getFullCampaign(full.campaign.id);
+  const refreshedLead = refreshed?.leads.find((item) => item.id === lead.id);
+  const refreshedOffer = refreshed?.offers.find((item) => item.id === offer.id) || updatedOffer || offer;
+  const handoff = refreshed && refreshedLead && refreshed.policy
+    ? await ensurePostDepositHandoff({
+        campaign: refreshed.campaign,
+        lead: refreshedLead,
+        policy: refreshed.policy,
+        offer: refreshedOffer,
+        messages: refreshed.messages.filter((message) => message.buyer_lead_id === refreshedLead.id),
+        events: refreshed.events.filter((item) => item.buyer_lead_id === refreshedLead.id),
+      })
+    : undefined;
+
+  return { offer: updatedOffer, event, handoff };
 }
 
 export async function POST(request: Request) {

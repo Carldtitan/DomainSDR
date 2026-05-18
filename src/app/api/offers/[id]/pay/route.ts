@@ -1,4 +1,5 @@
 import { addConversationEvent, getFullCampaign, getOffer, updateCampaign, updateLead, updateOffer } from "@/lib/campaignStore";
+import { ensurePostDepositHandoff } from "@/lib/postDepositService";
 
 export async function POST(_request: Request, context: { params: Promise<{ id: string }> }) {
   const { id } = await context.params;
@@ -7,6 +8,7 @@ export async function POST(_request: Request, context: { params: Promise<{ id: s
   const updated = await updateOffer(id, { status: "deposit_paid" });
   const full = await getFullCampaign(offer.campaign_id);
   const lead = full?.leads.find((item) => item.id === offer.buyer_lead_id);
+  let handoff;
   if (full && lead) {
     await updateLead(lead.id, { status: "deposit_requested", next_action: "Deposit paid. Escrow transfer next." });
     await addConversationEvent({
@@ -20,6 +22,19 @@ export async function POST(_request: Request, context: { params: Promise<{ id: s
       next_action: "Set up escrow or trusted marketplace transfer.",
     });
     await updateCampaign(full.campaign.id, { status: "deposit_requested" });
+    const refreshed = await getFullCampaign(full.campaign.id);
+    const refreshedLead = refreshed?.leads.find((item) => item.id === lead.id);
+    const refreshedOffer = refreshed?.offers.find((item) => item.id === offer.id) || updated || offer;
+    if (refreshed && refreshedLead && refreshed.policy) {
+      handoff = await ensurePostDepositHandoff({
+        campaign: refreshed.campaign,
+        lead: refreshedLead,
+        policy: refreshed.policy,
+        offer: refreshedOffer,
+        messages: refreshed.messages.filter((message) => message.buyer_lead_id === refreshedLead.id),
+        events: refreshed.events.filter((event) => event.buyer_lead_id === refreshedLead.id),
+      });
+    }
   }
-  return Response.json({ offer: updated });
+  return Response.json({ offer: updated, handoff });
 }
