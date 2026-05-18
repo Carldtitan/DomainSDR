@@ -18,7 +18,7 @@ export default async function ConversationPage({
   if (!lead) notFound();
 
   return (
-    <AppShell campaign={full.campaign} active="conversation">
+    <AppShell campaign={full.campaign}>
       <ConversationClient
         campaign={full.campaign}
         lead={lead}

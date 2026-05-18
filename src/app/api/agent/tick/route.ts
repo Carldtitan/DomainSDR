@@ -5,6 +5,7 @@ export const maxDuration = 60;
 export async function POST(request: Request) {
   const body = (await request.json().catch(() => ({}))) as {
     campaignId?: string;
+    forceResearch?: boolean;
     discoverBuyers?: boolean;
     sendFirstTouch?: boolean;
     sendNegotiationReplies?: boolean;

@@ -476,6 +476,40 @@ What should be emphasized:
 - The agent asking for payment/deposit.
 - The agent escalating serious or risky cases.
 
+## Pure Agent Loop Pivot
+
+The user then made the direction more explicit: remove anything that makes the product feel like SaaS.
+
+The critique was:
+
+- A dashboard makes the user feel like they are operating software.
+- Buyer tables make it look like a CRM.
+- Manual research and outreach screens make the owner responsible for the workflow.
+- The hackathon is about agents that do work, not SaaS products with AI features.
+
+The product direction changed again:
+
+- The visible app should have one input screen.
+- After launch, the user should see a live agent working screen.
+- The agent should keep waking and working until a buyer replies or a deposit is paid.
+- The interface should show what the agent is doing in plain language.
+- Buyer research, draft review, and dashboard routes should no longer be the main experience.
+- Old research/outreach pages should redirect back to the live agent run.
+
+Implementation direction from this pivot:
+
+- The campaign launch route still starts the broker immediately.
+- The main campaign page becomes a live "broker is working" screen at `/campaign/:id/agent`.
+- The screen polls campaign state and wakes the campaign-scoped broker loop.
+- The broker keeps researching, drafting, sending capped outreach, checking replies, and negotiating.
+- It stops treating the user as the operator once a buyer reply or deposit proves the agent reached the real world.
+- The old dashboard, research, and outreach routes redirect to the live broker run.
+- The old dashboard/research/outreach React components were removed from the visible app.
+
+The product principle after this pivot:
+
+- Input once. Then wait while the agent works.
+
 ## Integration and Partnership Opportunities
 
 The app should avoid reinventing:

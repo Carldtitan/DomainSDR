@@ -24,6 +24,7 @@ import type { AppStore, BuyerLead, ConversationEvent, DomainCampaign, Negotiatio
 
 type AgentTickOptions = {
   campaignId?: string;
+  forceResearch?: boolean;
   discoverBuyers?: boolean;
   sendFirstTouch?: boolean;
   sendNegotiationReplies?: boolean;
@@ -61,6 +62,7 @@ function hoursBetween(value: string, now = new Date()) {
 function defaultOptions(): Required<AgentTickOptions> {
   return {
     campaignId: "",
+    forceResearch: false,
     discoverBuyers: process.env.AGENT_AUTOPILOT_RESEARCH !== "false",
     sendFirstTouch: process.env.AGENT_AUTOPILOT_FIRST_TOUCH_EMAILS !== "false",
     sendNegotiationReplies: process.env.AGENT_AUTOPILOT_NEGOTIATION_REPLIES !== "false",
@@ -93,7 +95,7 @@ async function researchCampaigns(store: AppStore, resolved: Required<AgentTickOp
     const leadCount = store.buyerLeads.filter((lead) => lead.campaign_id === campaign.id).length;
     const recentlyResearched = hoursBetween(campaign.updated_at) < resolved.minHoursBetweenResearch;
     const shouldResearch =
-      leadCount === 0 ||
+      (leadCount === 0 && (!recentlyResearched || resolved.forceResearch)) ||
       (leadCount < resolved.minLeadsPerCampaign && !recentlyResearched && !["deposit_requested", "negotiating"].includes(campaign.status));
 
     if (!shouldResearch) continue;

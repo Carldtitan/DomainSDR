@@ -85,7 +85,7 @@ AGENT_MAX_DRAFTS_PER_TICK=5
 
 ## Supermemory vs Database
 
-Supermemory is used as agent memory, not as the primary transactional database. It stores research, buyer objections, outreach history, negotiation turns, recommendations, and a workspace snapshot. The app still needs a transactional store for campaigns, leads, offers, suppression, idempotency, and exact dashboard state.
+Supermemory is used as agent memory, not as the primary transactional database. It stores research, buyer objections, outreach history, negotiation turns, recommendations, and a workspace snapshot. The app still needs a transactional store for campaigns, leads, offers, suppression, idempotency, and exact agent state.
 
 Production storage is now automatic: set `DATABASE_URL` and the app uses hosted Postgres. Leave `DATABASE_URL` blank and it uses local SQLite.
 
@@ -133,9 +133,10 @@ After deployment, set `APP_BASE_URL` to the production URL and redeploy. The inc
 ## Key Routes
 
 - `/` broker launch
-- `/campaign/:id/research` buyer pipeline visibility
-- `/campaign/:id/outreach` draft queue override
-- `/campaign/:id/dashboard` broker console
+- `/campaign/:id/agent` live broker run
+- `/campaign/:id/research` redirects to the live broker run
+- `/campaign/:id/outreach` redirects to the live broker run
+- `/campaign/:id/dashboard` redirects to the live broker run
 - `/campaign/:id/conversation/:leadId` negotiation thread
 - `/api/agent/tick` broker work loop
 - `/api/agentmail/webhook` realtime AgentMail reply webhook receiver

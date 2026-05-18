@@ -1,29 +1,16 @@
 import Link from "next/link";
-import { BarChart3, Bot, MailCheck, Search, ShieldCheck, SquarePen } from "lucide-react";
+import { Bot, ShieldCheck } from "lucide-react";
 import type { DomainCampaign } from "@/lib/types";
 import { money } from "@/lib/format";
-import { AgentHeartbeat } from "@/components/AgentHeartbeat";
 
 type AppShellProps = {
   campaign?: DomainCampaign;
-  active?: "intake" | "research" | "outreach" | "dashboard" | "conversation";
   children: React.ReactNode;
 };
 
-function navClass(isActive: boolean) {
-  return `inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition ${
-    isActive
-      ? "bg-white text-slate-950 shadow-sm"
-      : "text-slate-300 hover:bg-slate-800 hover:text-white"
-  }`;
-}
-
-export function AppShell({ campaign, active = "intake", children }: AppShellProps) {
-  const campaignBase = campaign ? `/campaign/${campaign.id}` : "";
-
+export function AppShell({ campaign, children }: AppShellProps) {
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100">
-      <AgentHeartbeat />
       <header className="border-b border-white/10 bg-slate-950/95">
         <div className="mx-auto flex max-w-7xl flex-col gap-4 px-4 py-4 sm:px-6 lg:px-8">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
@@ -52,33 +39,9 @@ export function AppShell({ campaign, active = "intake", children }: AppShellProp
             ) : null}
           </div>
 
-          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-            <nav className="flex flex-wrap gap-2">
-              <Link className={navClass(active === "intake")} href="/">
-                <SquarePen size={16} />
-                Launch
-              </Link>
-              {campaign ? (
-                <>
-                  <Link className={navClass(active === "research")} href={`${campaignBase}/research`}>
-                    <Search size={16} />
-                    Buyers
-                  </Link>
-                  <Link className={navClass(active === "outreach")} href={`${campaignBase}/outreach`}>
-                    <MailCheck size={16} />
-                    Drafts
-                  </Link>
-                  <Link className={navClass(active === "dashboard")} href={`${campaignBase}/dashboard`}>
-                    <BarChart3 size={16} />
-                    Console
-                  </Link>
-                </>
-              ) : null}
-            </nav>
-            <div className="inline-flex w-fit items-center gap-2 rounded-md border border-emerald-300/20 bg-emerald-300/10 px-3 py-2 text-xs font-medium text-emerald-100">
-              <Bot size={14} />
-              Broker watches replies, finds buyers, sends guarded outreach, and advances next steps
-            </div>
+          <div className="inline-flex w-fit items-center gap-2 rounded-md border border-emerald-300/20 bg-emerald-300/10 px-3 py-2 text-xs font-medium text-emerald-100">
+            <Bot size={14} />
+            The broker keeps working until a buyer replies or a deposit is paid
           </div>
         </div>
       </header>
