@@ -16,7 +16,7 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
     sendNegotiationReplies: true,
     sendFollowUps: true,
     makePhoneCalls: true,
-    minLeadsPerCampaign: 12,
+    minLeadsPerCampaign: 15,
     minHoursBetweenResearch: 2,
     maxDraftsPerTick: 5,
     maxFirstTouchSendsPerTick: 2,

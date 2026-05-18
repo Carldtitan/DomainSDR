@@ -99,7 +99,9 @@ async function researchCampaigns(store: AppStore, resolved: Required<AgentTickOp
     const recentlyResearched = hoursBetween(campaign.updated_at) < resolved.minHoursBetweenResearch;
     const shouldResearch =
       (leadCount === 0 && (!recentlyResearched || resolved.forceResearch)) ||
-      (leadCount < resolved.minLeadsPerCampaign && !recentlyResearched && !["deposit_requested", "negotiating"].includes(campaign.status));
+      (leadCount < resolved.minLeadsPerCampaign &&
+        (!recentlyResearched || resolved.forceResearch) &&
+        !["deposit_requested", "negotiating"].includes(campaign.status));
 
     if (!shouldResearch) continue;
 
@@ -110,8 +112,8 @@ async function researchCampaigns(store: AppStore, resolved: Required<AgentTickOp
     const discovered = await discoverBuyers(campaign, analysis, {
       enrichContacts: false,
       scoreWithLlm: false,
-      maxQueries: 3,
-      maxCandidates: 12,
+      maxQueries: 4,
+      maxCandidates: Math.min(15, Math.max(12, resolved.minLeadsPerCampaign)),
     });
     const leads = await upsertLeads(campaign.id, discovered);
     console.log("[agent] research saved", { campaignId: campaign.id, domain: campaign.domain, leads: leads.length });

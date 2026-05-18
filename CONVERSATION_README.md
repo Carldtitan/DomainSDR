@@ -696,3 +696,10 @@ Fix direction:
 - Add structured logs around agent tick, research start, research saved, and contact enrichment.
 - Add `nano.ai`-relevant search expansions for nanotechnology, materials AI, semiconductors, nanomaterials, and materials informatics.
 - Stop showing long generated positioning statements in the plan card.
+
+Follow-up quality fix:
+
+- The first timeout fix proved leads could be saved, but some results were directories and editorial pages.
+- Buyer filtering was tightened to reject directory/list/careers/course/accelerator/portfolio results.
+- Nano-specific scoring now rewards materials, semiconductor, nanotech, biotech, discovery, simulation, and materials-informatics relevance.
+- Discovery now searches four focused queries and can refresh campaigns with fewer than 15 leads.
