@@ -426,6 +426,19 @@ async function saveStore(store: AppStore) {
     await ensurePostgresSchema();
     const sql = getPgSql();
     const queries = [
+      sql`
+        lock table
+          campaigns,
+          buyer_leads,
+          outbound_messages,
+          conversation_events,
+          negotiation_policies,
+          offers,
+          suppressions,
+          processed_agentmail_messages,
+          processed_webhook_events
+        in exclusive mode
+      `,
       sql`delete from campaigns`,
       sql`delete from buyer_leads`,
       sql`delete from outbound_messages`,
@@ -441,6 +454,10 @@ async function saveStore(store: AppStore) {
       queries.push(sql`
         insert into campaigns (id, created_at, updated_at, data)
         values (${item.id}, ${item.created_at}, ${item.updated_at}, ${JSON.stringify(item)}::jsonb)
+        on conflict (id) do update set
+          created_at = excluded.created_at,
+          updated_at = excluded.updated_at,
+          data = excluded.data
       `);
     }
     for (const item of store.buyerLeads) {
@@ -459,6 +476,16 @@ async function saveStore(store: AppStore) {
           ${item.updated_at},
           ${JSON.stringify(item)}::jsonb
         )
+        on conflict (id) do update set
+          campaign_id = excluded.campaign_id,
+          company_name = excluded.company_name,
+          website = excluded.website,
+          contact_email = excluded.contact_email,
+          status = excluded.status,
+          fit_score = excluded.fit_score,
+          created_at = excluded.created_at,
+          updated_at = excluded.updated_at,
+          data = excluded.data
       `);
     }
     for (const item of store.outboundMessages) {
@@ -478,6 +505,17 @@ async function saveStore(store: AppStore) {
           ${item.updated_at},
           ${JSON.stringify(item)}::jsonb
         )
+        on conflict (id) do update set
+          campaign_id = excluded.campaign_id,
+          buyer_lead_id = excluded.buyer_lead_id,
+          status = excluded.status,
+          to_email = excluded.to_email,
+          agentmail_message_id = excluded.agentmail_message_id,
+          agentmail_thread_id = excluded.agentmail_thread_id,
+          sent_at = excluded.sent_at,
+          created_at = excluded.created_at,
+          updated_at = excluded.updated_at,
+          data = excluded.data
       `);
     }
     for (const item of store.conversationEvents) {
@@ -497,12 +535,24 @@ async function saveStore(store: AppStore) {
           ${item.created_at},
           ${JSON.stringify(item)}::jsonb
         )
+        on conflict (id) do update set
+          campaign_id = excluded.campaign_id,
+          buyer_lead_id = excluded.buyer_lead_id,
+          direction = excluded.direction,
+          channel = excluded.channel,
+          classification = excluded.classification,
+          offer_amount = excluded.offer_amount,
+          agentmail_message_id = excluded.agentmail_message_id,
+          agentmail_thread_id = excluded.agentmail_thread_id,
+          created_at = excluded.created_at,
+          data = excluded.data
       `);
     }
     for (const item of store.negotiationPolicies) {
       queries.push(sql`
         insert into negotiation_policies (campaign_id, data)
         values (${item.campaign_id}, ${JSON.stringify(item)}::jsonb)
+        on conflict (campaign_id) do update set data = excluded.data
       `);
     }
     for (const item of store.offers) {
@@ -519,6 +569,14 @@ async function saveStore(store: AppStore) {
           ${item.updated_at},
           ${JSON.stringify(item)}::jsonb
         )
+        on conflict (id) do update set
+          campaign_id = excluded.campaign_id,
+          buyer_lead_id = excluded.buyer_lead_id,
+          amount = excluded.amount,
+          status = excluded.status,
+          created_at = excluded.created_at,
+          updated_at = excluded.updated_at,
+          data = excluded.data
       `);
     }
     for (const item of store.suppressions) {
@@ -533,13 +591,19 @@ async function saveStore(store: AppStore) {
           ${item.created_at},
           ${JSON.stringify(item)}::jsonb
         )
+        on conflict (id) do update set
+          campaign_id = excluded.campaign_id,
+          buyer_lead_id = excluded.buyer_lead_id,
+          email = excluded.email,
+          created_at = excluded.created_at,
+          data = excluded.data
       `);
     }
     for (const messageId of store.processedAgentmailMessageIds) {
-      queries.push(sql`insert into processed_agentmail_messages (message_id) values (${messageId})`);
+      queries.push(sql`insert into processed_agentmail_messages (message_id) values (${messageId}) on conflict (message_id) do nothing`);
     }
     for (const eventId of store.processedWebhookEventIds || []) {
-      queries.push(sql`insert into processed_webhook_events (event_id) values (${eventId})`);
+      queries.push(sql`insert into processed_webhook_events (event_id) values (${eventId}) on conflict (event_id) do nothing`);
     }
 
     await sql.transaction(queries);
