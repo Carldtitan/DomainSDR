@@ -269,10 +269,12 @@ export async function enrichLeadContact(lead: LeadInput): Promise<LeadInput> {
   const pages = apifyPages.length > 0 ? apifyPages : await directFetchPages(urls);
   const combinedText = pages.map((page) => `${page.title || ""} ${page.url} ${page.text} ${page.html || ""}`).join("\n").slice(0, 30000);
   const websiteDomain = domainFromUrl(lead.website || lead.current_domain);
-  const searchText = await apifySearchContactSnippets(lead);
+  const pageEmail = extractEmails(combinedText, websiteDomain);
+  const pagePhone = extractPhone(combinedText);
+  const searchText = pageEmail && pagePhone ? "" : await apifySearchContactSnippets(lead);
   const allText = `${combinedText}\n${searchText}`.slice(0, 35000);
-  const email = extractEmails(allText, websiteDomain);
-  const phone = extractPhone(allText);
+  const email = pageEmail || extractEmails(searchText, websiteDomain);
+  const phone = pagePhone || extractPhone(searchText);
   const contactUrl = extractContactUrl(pages, lead.contact_url || urls[0] || lead.website);
   const decisionMaker = extractDecisionMaker(allText);
 
