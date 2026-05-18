@@ -719,3 +719,10 @@ Implementation direction:
 - Added an `End all` button in the domain board header.
 - Updated the live agent state so closed runs are terminal and display `Ended`.
 - Because the agent loop already skips `closed` and `paused` campaigns, ending a run stops future research, outreach, follow-up, and call work for that campaign.
+
+Follow-up visibility fix:
+
+- After all runs were ended, the board hid `End all` because there were no active runs left.
+- The UI now shows `All ended` in the board header when nothing is active.
+- Ended rows now show an `Ended` pill instead of making the action area disappear.
+- The live run page now has an `End run` button while active and an `Ended` disabled state after stopping.

@@ -1,8 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Check, Loader2, Mail, RefreshCw, Send, Search } from "lucide-react";
-import { StatusBadge } from "@/components/AppShell";
+import { Check, Loader2, Mail, RefreshCw, Send, Search, Square, XCircle } from "lucide-react";
+import { secondaryButtonClass, StatusBadge } from "@/components/AppShell";
 import { compactDate } from "@/lib/format";
 import type { buildAgentRunState } from "@/lib/agentRunState";
 
@@ -37,6 +37,7 @@ export function AgentRunClient({ initialState }: { initialState: AgentRunState }
   const [lastWake, setLastWake] = useState("");
   const [error, setError] = useState("");
   const [wakeStatus, setWakeStatus] = useState<"starting" | "checking" | "working" | "idle">("starting");
+  const [ending, setEnding] = useState(false);
   const runningRef = useRef(false);
   const stateRef = useRef(initialState);
 
@@ -100,9 +101,27 @@ export function AgentRunClient({ initialState }: { initialState: AgentRunState }
     };
   }, [applyState, initialState.campaignId]);
 
+  async function endRun() {
+    setEnding(true);
+    setError("");
+    try {
+      const response = await fetch(`/api/campaigns/${initialState.campaignId}/end`, { method: "POST" });
+      if (!response.ok) throw new Error("Could not end run");
+      const latest = await fetch(`/api/campaigns/${initialState.campaignId}/agent-state`, { cache: "no-store" });
+      if (latest.ok) applyState((await latest.json()) as AgentRunState);
+    } catch (endError) {
+      setError(endError instanceof Error ? endError.message : "Could not end run");
+    } finally {
+      setEnding(false);
+    }
+  }
+
   const waiting = !state.terminal;
+  const ended = state.stage === "ended";
   const currentAction =
-    wakeStatus === "starting"
+    ended
+      ? "This run is stopped."
+      : wakeStatus === "starting"
       ? "Opening run."
       : wakeStatus === "checking"
         ? "Checking status and replies."
@@ -124,9 +143,22 @@ export function AgentRunClient({ initialState }: { initialState: AgentRunState }
             <p className="mt-4 max-w-2xl text-base leading-7 text-slate-600 dark:text-slate-300">{state.subheadline}</p>
           </div>
           <div className="flex shrink-0 items-center gap-2 rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm dark:border-slate-800 dark:bg-slate-950 dark:text-slate-200">
-            {waiting ? <Loader2 className="animate-spin text-slate-500 dark:text-slate-300" size={18} /> : <Check className="text-emerald-500 dark:text-emerald-300" size={18} />}
-            {wakeStatus === "working" ? "Agent running now" : waiting ? "Watching" : "Response reached"}
+            {ended ? <XCircle className="text-slate-500 dark:text-slate-300" size={18} /> : waiting ? <Loader2 className="animate-spin text-slate-500 dark:text-slate-300" size={18} /> : <Check className="text-emerald-500 dark:text-emerald-300" size={18} />}
+            {ended ? "Ended" : wakeStatus === "working" ? "Agent running now" : waiting ? "Watching" : "Response reached"}
           </div>
+        </div>
+        <div className="mt-5 flex flex-wrap items-center gap-2">
+          {ended ? (
+            <button className={`${secondaryButtonClass} px-3 py-2`} disabled type="button">
+              <XCircle size={16} />
+              Ended
+            </button>
+          ) : (
+            <button className={`${secondaryButtonClass} px-3 py-2`} disabled={ending} onClick={endRun} type="button">
+              {ending ? <Loader2 className="animate-spin" size={16} /> : <Square size={16} />}
+              End run
+            </button>
+          )}
         </div>
         <p className="mt-5 rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm dark:border-slate-800 dark:bg-slate-950 dark:text-slate-200">
           {currentAction}
