@@ -628,3 +628,21 @@ The safety rule remains important:
 
 - Supermemory email patterns are memory, not permission to guess recipients.
 - The app should not send to a guessed email unless that address is verified from a public source.
+
+## AgentPhone Agent ID Clarification
+
+The user then asked what `AGENTPHONE_AGENT_ID` is and how to get it.
+
+Clarification:
+
+- An AgentPhone agent ID identifies one configured phone/SMS agent persona in AgentPhone.
+- The agent stores phone behavior such as name, voice mode, system prompt, greeting, and attached phone numbers.
+- DomainSDR uses it when sending owner SMS updates or placing AgentPhone calls.
+- The app no longer strictly requires a fixed `AGENTPHONE_AGENT_ID` for owner SMS because it can create a lightweight notification agent automatically.
+- A fixed ID is still better for production because the same phone identity, prompt, and number configuration can be reused.
+
+Setup direction:
+
+- Create or list agents in AgentPhone.
+- Copy the returned ID, usually shaped like `agt_...` or `agent_...`.
+- Add it to Vercel as `AGENTPHONE_AGENT_ID`.
