@@ -306,11 +306,20 @@ Rules:
   );
 }
 
+function removePhoneNumbers(text: string) {
+  return text.replace(/(?:\+?1[\s.-]?)?(?:\(?[2-9]\d{2}\)?[\s.-]?)?[2-9]\d{2}[\s.-]?\d{4}/g, " ");
+}
+
 function extractOfferAmount(text: string) {
-  const compact = text.replace(/,/g, "");
-  const dollar = compact.match(/\$\s*(\d{2,7})/);
+  const compact = removePhoneNumbers(text).replace(/,/g, "");
+  const dollar = compact.match(/\$\s*(\d{2,7})\b/);
   if (dollar?.[1]) return Number(dollar[1]);
-  const bare = compact.match(/\b(\d{3,7})\b/);
+
+  const hasPriceLanguage =
+    /\b(offer|would you take|can do|i can do|we can do|pay|price|budget|counter|take|do|deal|for|at|works at|come up to)\b/i.test(compact);
+  if (!hasPriceLanguage) return undefined;
+
+  const bare = compact.match(/\b(\d{3,7})\s*(?:usd|dollars?)?\b/i);
   return bare?.[1] ? Number(bare[1]) : undefined;
 }
 
@@ -431,13 +440,24 @@ Extract only explicit offer amounts. Do not infer a price if none is present.`,
     fallback,
     0.1,
   );
+  const explicitAmount = extractOfferAmount(reply);
+  const normalized: ReplyClassification = {
+    ...generated,
+    offer_amount: explicitAmount,
+  };
+
+  if (generated.classification === "lowball_offer" && explicitAmount === undefined) {
+    normalized.classification = fallback.classification === "lowball_offer" ? "interested" : fallback.classification;
+    normalized.next_action = fallback.next_action;
+    normalized.explanation = `Removed non-explicit offer amount. ${fallback.explanation}`;
+  }
 
   const lower = reply.toLowerCase();
   const explicitOptOut = /unsubscribe|opt out|remove me|do not email|don't email|stop contacting/.test(lower);
   const explicitDecline = /not interested|no thanks|pass\b|not a fit/.test(lower);
 
-  if (generated.classification === "opt_out" && !explicitOptOut) {
-    if (explicitDecline) return { ...generated, classification: "not_interested" };
+  if (normalized.classification === "opt_out" && !explicitOptOut) {
+    if (explicitDecline) return { ...normalized, classification: "not_interested" };
     return {
       ...fallback,
       classification: fallback.classification === "opt_out" ? "other" : fallback.classification,
@@ -447,17 +467,17 @@ Extract only explicit offer amounts. Do not infer a price if none is present.`,
   }
 
   if (
-    generated.classification === "not_interested" &&
+    normalized.classification === "not_interested" &&
     !explicitDecline &&
     /\b(no|not|without|don't want|do not want)\b.{0,40}\b(payment plan|installments?|monthly|lease)\b/i.test(reply)
   ) {
     return {
-      ...generated,
+      ...normalized,
       classification: "asks_payment_plan",
       next_action: "Buyer declined payment-plan structure; keep direct sale path open.",
       explanation: "The buyer rejected a payment plan, not the domain purchase.",
     };
   }
 
-  return generated;
+  return normalized;
 }
