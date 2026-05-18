@@ -92,10 +92,10 @@ function isLikelyEditorialResult(title: string | undefined, url: string, domain:
   const text = `${title || ""} ${domain} ${path}`.toLowerCase();
   return (
     /\b(top|best)\s+\d+\b/.test(text) ||
-    /\b(best|top)\b.{0,80}\b(companies|software|tools|platforms|solutions)\b/.test(text) ||
-    /\b(list of|companies in|companies for|market report|industry trends|guide|blog|case study|wikipedia|reddit|pilot shows|new ai engine)\b/.test(text) ||
+    /\b(best|top)\b.{0,100}\b(companies|startups|software|tools|platforms|solutions)\b/.test(text) ||
+    /\b(list of|companies in|companies for|market report|industry trends|guide|blog|case study|wikipedia|reddit|pilot shows|new ai engine|careers|jobs|course|education|training|conference|accelerator|portfolio|directory)\b/.test(text) ||
     CONTENT_PATH_PATTERN.test(path) ||
-    /(n-ix|medium|forbes|techcrunch|builtin|g2|capterra|wikipedia|reddit|statista|autoremarketing|autonews|capacity|support\.billsby|linkedin|facebook|ycombinator|prospeo|prnewswire|dealershipguy)\./.test(text)
+    /(seedtable|start\.nano|biotech-careers|mtlc|n-ix|medium|forbes|techcrunch|builtin|g2|capterra|wikipedia|reddit|statista|autoremarketing|autonews|capacity|support\.billsby|linkedin|facebook|ycombinator|prospeo|prnewswire|dealershipguy)\./.test(text)
   );
 }
 
@@ -114,11 +114,15 @@ function localBuyerFitScore(campaign: DomainCampaign, buyer: LeadCandidate) {
 
   let score = 45;
   const automotiveDomain = words.some((word) => ["car", "cars", "auto", "autos", "vehicle", "vehicles"].includes(word));
+  const nanoDomain = words.some((word) => ["nano", "nanotech", "nanotechnology"].includes(word));
   if (automotiveDomain) {
     if (/\b(auto|automotive|car|cars|vehicle|dealer|dealership|bdc|fleet)\b/.test(haystack)) score += 18;
     if (/\b(ai|agent|assistant|computer vision|inspection|shopping|lifecycle|inventory|conversational)\b|\.ai\b/.test(haystack)) {
       score += 17;
     }
+  } else if (nanoDomain) {
+    if (/\b(nano|nanotech|nanotechnology|nanomaterial|materials|semiconductor|molecular|battery|biotech)\b/.test(haystack)) score += 18;
+    if (/\b(ai|machine learning|ml|model|discovery|simulation|informatics|automation)\b|\.ai\b/.test(haystack)) score += 14;
   } else {
     const overlap = words.filter((word) => haystack.includes(word)).length;
     score += Math.min(24, overlap * 8);
@@ -185,7 +189,7 @@ function searchItemsToCandidates(
         current_domain: currentDomain,
         buyer_category: category,
         fit_score: 60,
-        reason_fit: `${companyName} appeared in search for "${query}". ${analysis.positioning_statement} ${description}`.trim(),
+        reason_fit: `${companyName} appeared in search for "${query}". ${description}`.trim(),
         current_domain_weakness: inferWeakness(currentDomain, campaign.domain),
         contact_email: "",
         contact_url: `https://${currentDomain}/contact`,
@@ -262,8 +266,13 @@ function categoryExpansionQueries(campaign: DomainCampaign, analysis: DomainAnal
   if (words.some((word) => ["nano", "nanotech", "nanotechnology"].includes(word))) {
     [
       "\"nanotechnology\" \"AI\" startup",
-      "\"nanotech\" \"machine learning\" company",
-      "\"materials discovery\" \"AI\" startup",
+      "\"nanotechnology AI\" \"request demo\"",
+      "\"nanotechnology AI\" \"contact\" -top -best -list -directory",
+      "\"AI-driven\" \"nanotechnology\" company",
+      "\"nanotech\" \"machine learning\" company -careers -jobs",
+      "\"materials discovery\" \"AI\" startup -portfolio -accelerator",
+      "\"materials informatics\" \"platform\" \"contact\"",
+      "\"AI materials discovery\" \"request demo\"",
       "\"semiconductor\" \"AI\" \"nanotechnology\"",
       "\"nanomaterials\" \"AI\" company",
       "\"materials informatics\" startup",
