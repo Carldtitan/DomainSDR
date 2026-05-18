@@ -1,6 +1,8 @@
 import type { BuyerLead } from "@/lib/types";
 import { apifyAllowed, apifyRunSyncDatasetUrl } from "@/lib/apifyClient";
+import { browserUseFindContacts } from "@/lib/browserUseService";
 import { domainFromUrl, normalizeDomain } from "@/lib/format";
+import { saveEmailPatternMemory, searchEmailPatternMemory } from "@/lib/supermemoryService";
 
 type LeadInput = Omit<BuyerLead, "id" | "campaign_id" | "created_at" | "updated_at">;
 
@@ -23,6 +25,23 @@ type ApifyContentItem = {
 
 const ROLE_PATTERN =
   "(Founder|Co-Founder|CEO|Chief Executive Officer|CMO|Chief Marketing Officer|Head of Growth|VP Marketing|Growth Lead|Partnerships|Business Development)";
+
+const GENERIC_INBOXES = new Set([
+  "admin",
+  "bd",
+  "bizdev",
+  "contact",
+  "founder",
+  "founders",
+  "growth",
+  "hello",
+  "info",
+  "partnership",
+  "partnerships",
+  "sales",
+  "support",
+  "team",
+]);
 
 function cleanText(value: string) {
   return value
@@ -157,6 +176,46 @@ function extractDecisionMaker(text: string) {
   return { name: "", role: roleOnly?.[1] || "" };
 }
 
+function normalizeNameParts(name?: string) {
+  return (name || "")
+    .toLowerCase()
+    .replace(/[^a-z\s-]/g, "")
+    .split(/[\s-]+/)
+    .filter(Boolean);
+}
+
+function inferEmailPattern(email: string, decisionMakerName?: string) {
+  const [local, domain] = email.toLowerCase().split("@");
+  if (!local || !domain) return "";
+  if (GENERIC_INBOXES.has(local)) return `generic:${local}@`;
+
+  const parts = normalizeNameParts(decisionMakerName);
+  const first = parts[0];
+  const last = parts[parts.length - 1];
+  if (!first || !last || first === last) return "person:unknown";
+
+  if (local === `${first}.${last}`) return "first.last@";
+  if (local === `${first}_${last}`) return "first_last@";
+  if (local === `${first}${last}`) return "firstlast@";
+  if (local === `${first[0]}${last}`) return "flast@";
+  if (local === `${first}${last[0]}`) return "firstl@";
+  if (local === first) return "first@";
+  return "person:unknown";
+}
+
+async function rememberEmailPattern(lead: LeadInput, email: string, sourceUrl?: string) {
+  const domain = email.split("@")[1] || domainFromUrl(lead.website || lead.current_domain);
+  const pattern = inferEmailPattern(email, lead.decision_maker_name);
+  if (!domain || !pattern) return;
+  await saveEmailPatternMemory({
+    domain,
+    companyName: lead.company_name,
+    pattern,
+    exampleEmail: email,
+    sourceUrl,
+  });
+}
+
 async function fetchWithTimeout(url: string, timeoutMs = 3500) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
@@ -263,7 +322,7 @@ async function apifySearchContactSnippets(lead: LeadInput) {
   }
 }
 
-export async function enrichLeadContact(lead: LeadInput): Promise<LeadInput> {
+async function enrichLeadContactCore(lead: LeadInput): Promise<LeadInput> {
   const urls = candidateUrls(lead);
   const apifyPages = await apifyFetchPages(urls);
   const pages = apifyPages.length > 0 ? apifyPages : await directFetchPages(urls);
@@ -277,8 +336,7 @@ export async function enrichLeadContact(lead: LeadInput): Promise<LeadInput> {
   const phone = pagePhone || extractPhone(searchText);
   const contactUrl = extractContactUrl(pages, lead.contact_url || urls[0] || lead.website);
   const decisionMaker = extractDecisionMaker(allText);
-
-  return {
+  const enriched = {
     ...lead,
     contact_email: email || lead.contact_email,
     contact_url: contactUrl || lead.contact_url,
@@ -290,8 +348,57 @@ export async function enrichLeadContact(lead: LeadInput): Promise<LeadInput> {
       ? `${lead.reason_fit} Contact enrichment checked ${pages.length} public page${pages.length === 1 ? "" : "s"}${searchText ? " and search snippets" : ""}.`
       : lead.reason_fit,
   };
+
+  if (enriched.contact_email) {
+    await rememberEmailPattern(enriched, enriched.contact_email, contactUrl || pages[0]?.url);
+  }
+
+  return enriched;
+}
+
+async function applyBrowserFallback(lead: LeadInput) {
+  if (lead.contact_email) return lead;
+  const domain = domainFromUrl(lead.website || lead.current_domain);
+  const memory = await searchEmailPatternMemory(`${lead.company_name} ${domain}`);
+  const contact = await browserUseFindContacts(lead, memory.join("\n").slice(0, 1200));
+  if (!contact) return lead;
+
+  const enriched = {
+    ...lead,
+    contact_email: contact.contact_email || lead.contact_email,
+    contact_url: contact.contact_url || lead.contact_url,
+    contact_phone: contact.contact_phone || lead.contact_phone,
+    phone_source_url: contact.contact_phone ? contact.source_url || contact.contact_url || lead.phone_source_url : lead.phone_source_url,
+    decision_maker_name: contact.decision_maker_name || lead.decision_maker_name,
+    decision_maker_role: contact.decision_maker_role || lead.decision_maker_role,
+    reason_fit: contact.notes ? `${lead.reason_fit} Browser contact check: ${contact.notes}` : lead.reason_fit,
+  };
+
+  if (enriched.contact_email) {
+    await rememberEmailPattern(enriched, enriched.contact_email, contact.source_url || enriched.contact_url);
+  }
+
+  return enriched;
+}
+
+export async function enrichLeadContact(lead: LeadInput): Promise<LeadInput> {
+  return applyBrowserFallback(await enrichLeadContactCore(lead));
 }
 
 export async function enrichLeadContacts(leads: LeadInput[]) {
-  return Promise.all(leads.slice(0, 15).map((lead) => enrichLeadContact(lead)));
+  const enriched = await Promise.all(leads.slice(0, 15).map((lead) => enrichLeadContactCore(lead)));
+  const browserFallbackLimit = Number(process.env.BROWSER_USE_CONTACT_MAX_LEADS || 1);
+  const output: LeadInput[] = [];
+  let browserFallbacks = 0;
+
+  for (const lead of enriched) {
+    if (!lead.contact_email && browserFallbacks < browserFallbackLimit) {
+      output.push(await applyBrowserFallback(lead));
+      browserFallbacks += 1;
+    } else {
+      output.push(lead);
+    }
+  }
+
+  return output;
 }

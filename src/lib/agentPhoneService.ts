@@ -182,6 +182,54 @@ export async function startAgentPhoneCall({
   }
 }
 
+export async function sendOwnerSmsUpdate({
+  campaign,
+  body,
+  type = "owner_sms_update",
+}: {
+  campaign: DomainCampaign;
+  body: string;
+  type?: string;
+}) {
+  if (!configured()) return { ok: false, skipped: true, error: "AGENTPHONE_API_KEY is not configured" };
+  const agentId = process.env.AGENTPHONE_AGENT_ID;
+  if (!agentId) return { ok: false, skipped: true, error: "AGENTPHONE_AGENT_ID is not configured" };
+
+  const toNumber = outboundPhoneRecipient();
+  if (!allowExternalPhone(toNumber)) {
+    return { ok: false, skipped: true, error: "External owner SMS is disabled." };
+  }
+
+  const message = body.trim().slice(0, 320);
+  if (!message) return { ok: false, skipped: true, error: "SMS body is empty" };
+
+  try {
+    const response = await fetch(`${AGENTPHONE_BASE_URL}/v1/messages`, {
+      method: "POST",
+      headers: headers(),
+      body: JSON.stringify({
+        agent_id: agentId,
+        to_number: toNumber,
+        body: message,
+      }),
+    });
+    const data = await response.json().catch(() => ({}));
+    const ok = response.ok;
+
+    await saveToSupermemory({
+      campaignId: campaign.id,
+      type,
+      content: JSON.stringify({ toNumber, body: message, ok, data }, null, 2),
+    });
+
+    return ok
+      ? { ok: true, data }
+      : { ok: false, skipped: false, error: data?.message || data?.error || `AgentPhone ${response.status}`, data };
+  } catch (error) {
+    return { ok: false, skipped: false, error: error instanceof Error ? error.message : "Unknown AgentPhone error" };
+  }
+}
+
 function webhookText(payload: AgentPhoneWebhook) {
   return (
     payload.text ||

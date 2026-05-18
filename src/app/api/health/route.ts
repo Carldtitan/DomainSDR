@@ -13,6 +13,8 @@ export async function GET() {
       apify: flag("APIFY_TOKEN"),
       agentMail: flag("AGENTMAIL_API_KEY") && flag("AGENTMAIL_INBOX_ID"),
       agentPhone: flag("AGENTPHONE_API_KEY"),
+      ownerSms: flag("AGENTPHONE_API_KEY") && flag("AGENTPHONE_AGENT_ID"),
+      browserUse: flag("BROWSER_USE_API_KEY"),
       supermemory: flag("SUPERMEMORY_API_KEY"),
       stripe: flag("STRIPE_SECRET_KEY"),
       stripeWebhook: flag("STRIPE_WEBHOOK_SECRET"),
@@ -33,6 +35,7 @@ export async function GET() {
       firstTouchAutopilot: process.env.AGENT_AUTOPILOT_FIRST_TOUCH_EMAILS !== "false",
       callAutopilot: process.env.AGENT_AUTOPILOT_CALLS === "true",
       phoneOutboundExternal: process.env.ALLOW_EXTERNAL_PHONE_OUTBOUND === "true",
+      browserUseContactFallback: process.env.ALLOW_BROWSER_USE_CONTACT_FALLBACK !== "false",
     },
   });
 }

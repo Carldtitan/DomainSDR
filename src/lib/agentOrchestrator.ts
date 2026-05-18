@@ -19,7 +19,7 @@ import { generateNegotiationReply } from "@/lib/negotiationEngine";
 import { createDepositLink } from "@/lib/paymentService";
 import { reconcileLeadFromReplyBody } from "@/lib/leadIdentity";
 import { saveToSupermemory, saveWorkspaceSnapshot } from "@/lib/supermemoryService";
-import { startAgentPhoneCall } from "@/lib/agentPhoneService";
+import { sendOwnerSmsUpdate, startAgentPhoneCall } from "@/lib/agentPhoneService";
 import type { AppStore, BuyerLead, ConversationEvent, DomainCampaign, NegotiationPolicy, OutboundMessage } from "@/lib/types";
 
 type AgentTickOptions = {
@@ -215,7 +215,7 @@ async function sendFirstTouchOutreach(store: AppStore, resolved: Required<AgentT
       type: "agent_first_touch_sent",
       content: JSON.stringify({ lead, message, recipient, sent }, null, 2),
     });
-    sentFirstTouch.push({ buyer_lead_id: lead.id, company_name: lead.company_name, message_id: message.id, sent });
+    sentFirstTouch.push({ campaign_id: campaign.id, buyer_lead_id: lead.id, company_name: lead.company_name, message_id: message.id, sent });
     if (sent.message_id) sendsRemaining -= 1;
   }
 
@@ -252,6 +252,7 @@ async function placeDuePhoneCalls(store: AppStore, resolved: Required<AgentTickO
     const result = await startAgentPhoneCall({ campaign, lead, policy, toNumber: outboundPhoneRecipient() });
     if (result.ok) {
       placedCalls.push({
+        campaign_id: campaign.id,
         buyer_lead_id: lead.id,
         company_name: lead.company_name,
         discoveredPhone: lead.contact_phone,
@@ -332,6 +333,50 @@ function portfolioRecommendations(store: AppStore, campaignId = "") {
       },
     };
   });
+}
+
+type OwnerTickSummary = {
+  sentFirstTouch: { campaign_id: string; company_name: string; sent: { message_id?: string } }[];
+  sentFollowUps: { campaign_id: string; company_name: string; sent: { message_id?: string } }[];
+  agentResponses: { campaign_id: string; company_name: string; sent: { message_id?: string }; depositOffer?: unknown }[];
+  placedCalls: { campaign_id: string; company_name: string; result: { ok?: boolean } }[];
+};
+
+async function sendOwnerTickUpdates(store: AppStore, summary: OwnerTickSummary) {
+  const linesByCampaign = new Map<string, string[]>();
+  const add = (campaignId: string, line: string) => {
+    linesByCampaign.set(campaignId, [...(linesByCampaign.get(campaignId) || []), line]);
+  };
+
+  const firstTouchByCampaign = new Map<string, number>();
+  for (const item of summary.sentFirstTouch.filter((item) => item.sent?.message_id)) {
+    firstTouchByCampaign.set(item.campaign_id, (firstTouchByCampaign.get(item.campaign_id) || 0) + 1);
+  }
+  for (const [campaignId, count] of firstTouchByCampaign) {
+    add(campaignId, `${count} first email${count === 1 ? "" : "s"} sent.`);
+  }
+
+  for (const item of summary.sentFollowUps.filter((item) => item.sent?.message_id)) {
+    add(item.campaign_id, `Follow-up sent to ${item.company_name}.`);
+  }
+
+  for (const item of summary.agentResponses.filter((item) => item.sent?.message_id)) {
+    add(item.campaign_id, item.depositOffer ? `Deposit link sent to ${item.company_name}.` : `Reply handled from ${item.company_name}.`);
+  }
+
+  for (const item of summary.placedCalls.filter((item) => item.result?.ok)) {
+    add(item.campaign_id, `Call started to ${item.company_name}.`);
+  }
+
+  for (const [campaignId, lines] of linesByCampaign) {
+    const campaign = store.campaigns.find((item) => item.id === campaignId);
+    if (!campaign) continue;
+    await sendOwnerSmsUpdate({
+      campaign,
+      body: `${campaign.domain}: ${lines.join(" ")}`,
+      type: "owner_sms_agent_update",
+    });
+  }
 }
 
 function hasOutboundAfter(store: AppStore, event: ConversationEvent, lead: BuyerLead) {
@@ -433,6 +478,7 @@ async function sendNegotiationResponse({
   });
 
   return {
+    campaign_id: campaign.id,
     buyer_lead_id: lead.id,
     company_name: lead.company_name,
     inbound_event_id: event.id,
@@ -623,12 +669,19 @@ export async function runAgentTick(options: AgentTickOptions = {}) {
       content: JSON.stringify({ lead, message, sent }, null, 2),
     });
 
-    sentFollowUps.push({ buyer_lead_id: lead.id, company_name: lead.company_name, message_id: message.id, sent });
+    sentFollowUps.push({ campaign_id: campaign.id, buyer_lead_id: lead.id, company_name: lead.company_name, message_id: message.id, sent });
     sendsRemaining -= sent.message_id ? 1 : 0;
   }
 
   store = await loadStore();
   const phoneResult = await placeDuePhoneCalls(store, resolved);
+  store = await loadStore();
+  await sendOwnerTickUpdates(store, {
+    sentFirstTouch: firstTouchResult.sentFirstTouch,
+    sentFollowUps,
+    agentResponses: negotiationResult.agentResponses,
+    placedCalls: phoneResult.placedCalls,
+  });
 
   for (const recommendation of recommendations) {
     await saveToSupermemory({

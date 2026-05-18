@@ -9,6 +9,7 @@ import {
   updateLead,
   updateOffer,
 } from "@/lib/campaignStore";
+import { sendOwnerSmsUpdate } from "@/lib/agentPhoneService";
 import { money } from "@/lib/format";
 import { saveToSupermemory } from "@/lib/supermemoryService";
 import { getStripe } from "@/lib/stripeClient";
@@ -48,6 +49,12 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
     type: "stripe_deposit_paid",
     customId: `stripe_${session.id}`,
     content: JSON.stringify({ offer: updatedOffer, lead, sessionId: session.id, event }, null, 2),
+  });
+
+  await sendOwnerSmsUpdate({
+    campaign: full.campaign,
+    type: "owner_sms_deposit_paid",
+    body: `${full.campaign.domain}: deposit paid. Sale amount ${money(offer.amount)}. Set up escrow or marketplace transfer.`,
   });
 
   return { offer: updatedOffer, event };
