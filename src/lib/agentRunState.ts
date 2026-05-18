@@ -75,7 +75,7 @@ export function buildAgentRunState(full: FullCampaign) {
       ? "The run reached a buyer response."
       : "Keep this page open for live status.";
 
-  const milestones = [
+  const activeMilestones = [
     {
       label: "Plan",
       state: full.campaign.analysis ? "done" : "working",
@@ -115,6 +115,18 @@ export function buildAgentRunState(full: FullCampaign) {
           : "Not requested.",
     },
   ];
+  const milestones = ended || paused
+    ? activeMilestones.map((step) => ({
+        ...step,
+        state: step.state === "done" ? "done" : "stopped",
+        detail:
+          step.state === "done"
+            ? step.detail
+            : ended
+              ? "Stopped before this step."
+              : "Paused before this step.",
+      }))
+    : activeMilestones;
 
   const activities = [
     {

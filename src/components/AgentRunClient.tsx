@@ -23,6 +23,13 @@ function StageIcon({ state }: { state: string }) {
       </span>
     );
   }
+  if (state === "stopped") {
+    return (
+      <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-slate-50 text-slate-500 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400">
+        <XCircle size={15} />
+      </span>
+    );
+  }
   return <span className="h-7 w-7 shrink-0 rounded-full border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950" />;
 }
 
@@ -118,9 +125,13 @@ export function AgentRunClient({ initialState }: { initialState: AgentRunState }
 
   const waiting = !state.terminal;
   const ended = state.stage === "ended";
+  const paused = state.stage === "paused";
+  const stopped = ended || paused;
   const currentAction =
     ended
       ? "This run is stopped."
+      : paused
+        ? "This run is paused."
       : wakeStatus === "starting"
       ? "Opening run."
       : wakeStatus === "checking"
@@ -143,8 +154,8 @@ export function AgentRunClient({ initialState }: { initialState: AgentRunState }
             <p className="mt-4 max-w-2xl text-base leading-7 text-slate-600 dark:text-slate-300">{state.subheadline}</p>
           </div>
           <div className="flex shrink-0 items-center gap-2 rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm dark:border-slate-800 dark:bg-slate-950 dark:text-slate-200">
-            {ended ? <XCircle className="text-slate-500 dark:text-slate-300" size={18} /> : waiting ? <Loader2 className="animate-spin text-slate-500 dark:text-slate-300" size={18} /> : <Check className="text-emerald-500 dark:text-emerald-300" size={18} />}
-            {ended ? "Ended" : wakeStatus === "working" ? "Agent running now" : waiting ? "Watching" : "Response reached"}
+            {stopped ? <XCircle className="text-slate-500 dark:text-slate-300" size={18} /> : waiting ? <Loader2 className="animate-spin text-slate-500 dark:text-slate-300" size={18} /> : <Check className="text-emerald-500 dark:text-emerald-300" size={18} />}
+            {ended ? "Ended" : paused ? "Paused" : wakeStatus === "working" ? "Agent running now" : waiting ? "Watching" : "Complete"}
           </div>
         </div>
         <div className="mt-5 flex flex-wrap items-center gap-2">
@@ -216,7 +227,7 @@ export function AgentRunClient({ initialState }: { initialState: AgentRunState }
         <aside>
           <div className="mb-4 flex items-center justify-between">
             <h2 className="text-lg font-semibold text-slate-950 dark:text-white">Activity</h2>
-            <RefreshCw className={waiting ? "animate-spin text-slate-500 dark:text-slate-300" : "text-emerald-500 dark:text-emerald-300"} size={18} />
+            {stopped ? <XCircle className="text-slate-500 dark:text-slate-400" size={18} /> : <RefreshCw className={waiting ? "animate-spin text-slate-500 dark:text-slate-300" : "text-emerald-500 dark:text-emerald-300"} size={18} />}
           </div>
           <div className="grid gap-3">
             {error ? <p className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700 dark:border-red-400/30 dark:bg-red-500/10 dark:text-red-100">{error}</p> : null}
