@@ -726,3 +726,10 @@ Follow-up visibility fix:
 - The UI now shows `All ended` in the board header when nothing is active.
 - Ended rows now show an `Ended` pill instead of making the action area disappear.
 - The live run page now has an `End run` button while active and an `Ended` disabled state after stopping.
+
+Ended-state clarity fix:
+
+- The user saw an ended run still showing a spinner and `working` milestones.
+- Closed or paused runs now convert incomplete milestones to `stopped`.
+- The live page no longer shows animated refresh/spinner icons for stopped runs.
+- The status pill now says `Ended`/`Paused`, not `Response reached`, when the run is stopped.
