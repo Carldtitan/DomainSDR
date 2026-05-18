@@ -830,3 +830,24 @@ Implementation direction:
 - The agent tick now checks paid deposits, so a later AgentMail reply containing a phone number can start the AgentPhone scheduling call.
 - AgentPhone has a dedicated post-deposit scheduling prompt that does not renegotiate price and only books a handoff time.
 - AgentPhone webhook handling can capture a proposed Saturday/Sunday time and record it in campaign history.
+
+## AgentPhone Post-Deposit Debug
+
+The user then asked to look at the paid run and make the post-deposit handoff call work.
+
+What happened in production:
+
+- The `website.com` run had a paid Stripe deposit.
+- The broker sent the AgentMail handoff request asking for a phone number, weekend time, and timezone.
+- The AgentPhone call attempt failed with `Agent has no phone number assigned. Assign a phone number to the agent first.`
+- The AgentPhone account did have active numbers, including unassigned numbers, but the app was creating hosted agents without attaching a number before placing the call.
+
+Implementation changes:
+
+- Normalize the controlled phone recipient to E.164, so `6284887063` becomes `+16284887063`.
+- Before placing a voice call, check whether the AgentPhone agent has an attached number.
+- If the agent has no number, attach a preferred number, an available unassigned number, or provision a new US number.
+- Retry the call once if AgentPhone still reports no assigned caller number.
+- Record AgentPhone scheduling failures as visible run activity instead of silently updating only lead metadata.
+- Keep paid runs active until handoff is underway or a weekend handoff time is proposed.
+- Add a Handoff milestone and buyer contact activity so the user can see the buyer email/phone status after deposit payment.

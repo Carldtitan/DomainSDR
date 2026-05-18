@@ -7,6 +7,19 @@ import type { BuyerLead, DomainCampaign, NegotiationPolicy, Offer } from "@/lib/
 
 const AGENTPHONE_BASE_URL = "https://api.agentphone.ai";
 
+type AgentPhoneNumber = {
+  id?: string;
+  phoneNumber?: string;
+  status?: string;
+  type?: string;
+  agentId?: string | null;
+};
+
+type AgentPhoneAgent = {
+  id?: string;
+  numbers?: AgentPhoneNumber[];
+};
+
 type AgentPhoneWebhook = {
   id?: string;
   type?: string;
@@ -42,6 +55,102 @@ function headers() {
     Authorization: `Bearer ${process.env.AGENTPHONE_API_KEY}`,
     "Content-Type": "application/json",
   };
+}
+
+async function getAgent(agentId: string) {
+  const response = await fetch(`${AGENTPHONE_BASE_URL}/v1/agents/${agentId}`, {
+    headers: headers(),
+  });
+  const data = (await response.json().catch(() => ({}))) as AgentPhoneAgent & { message?: string; error?: string };
+  if (!response.ok) {
+    return { ok: false, error: data?.message || data?.error || `AgentPhone ${response.status}`, data };
+  }
+  return { ok: true, data };
+}
+
+async function listPhoneNumbers() {
+  const response = await fetch(`${AGENTPHONE_BASE_URL}/v1/numbers?limit=100`, {
+    headers: headers(),
+  });
+  const data = (await response.json().catch(() => ({}))) as {
+    data?: AgentPhoneNumber[];
+    message?: string;
+    error?: string;
+  };
+  if (!response.ok) {
+    return { ok: false, error: data?.message || data?.error || `AgentPhone ${response.status}`, data };
+  }
+  return { ok: true, numbers: data.data || [] };
+}
+
+async function attachNumberToAgent(agentId: string, numberId: string) {
+  const response = await fetch(`${AGENTPHONE_BASE_URL}/v1/agents/${agentId}/numbers`, {
+    method: "POST",
+    headers: headers(),
+    body: JSON.stringify({ numberId }),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    return { ok: false, error: `Could not attach AgentPhone number: ${response.status}`, data };
+  }
+  return { ok: true, data };
+}
+
+async function provisionNumberForAgent(agentId: string) {
+  const digits = outboundPhoneRecipient().replace(/\D/g, "");
+  const areaCode = digits.length === 11 && digits.startsWith("1") ? digits.slice(1, 4) : digits.slice(0, 3);
+  const response = await fetch(`${AGENTPHONE_BASE_URL}/v1/numbers`, {
+    method: "POST",
+    headers: headers(),
+    body: JSON.stringify({
+      country: "US",
+      areaCode: areaCode.length === 3 ? areaCode : undefined,
+      agentId,
+    }),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    return { ok: false, error: `Could not provision AgentPhone number: ${response.status}`, data };
+  }
+  return { ok: true, data };
+}
+
+function assignableNumber(numbers: AgentPhoneNumber[]) {
+  return numbers.find(
+    (number) =>
+      number.id &&
+      number.status === "active" &&
+      !number.agentId &&
+      number.type !== "shared-imessage",
+  );
+}
+
+async function ensureAgentPhoneNumber(agentId: string, forceNew = false) {
+  const agent = await getAgent(agentId);
+  if (agent.ok && !forceNew && agent.data.numbers?.length) {
+    return { ok: true, data: { agent: agent.data, attached: false } };
+  }
+
+  const preferredNumberId = process.env.AGENTPHONE_NUMBER_ID;
+  if (preferredNumberId && !forceNew) {
+    const attached = await attachNumberToAgent(agentId, preferredNumberId);
+    if (attached.ok) return { ok: true, data: { attached: true, numberId: preferredNumberId } };
+  }
+
+  if (!forceNew) {
+    const numbers = await listPhoneNumbers();
+    if (numbers.ok) {
+      const available = assignableNumber(numbers.numbers || []);
+      if (available?.id) {
+        const attached = await attachNumberToAgent(agentId, available.id);
+        if (attached.ok) return { ok: true, data: { attached: true, number: available } };
+      }
+    }
+  }
+
+  const provisioned = await provisionNumberForAgent(agentId);
+  if (provisioned.ok) return { ok: true, data: { provisioned: true, number: provisioned.data } };
+  return provisioned;
 }
 
 function allowExternalPhone(toNumber: string) {
@@ -153,6 +262,55 @@ async function createNotificationAgent(campaign: DomainCampaign) {
   return data.id as string;
 }
 
+type CallRequestBody = {
+  agentId: string;
+  toNumber: string;
+  initialGreeting: string;
+  systemPrompt: string;
+  metadata: Record<string, string | number | undefined>;
+};
+
+function agentPhoneError(status: number, data: unknown) {
+  if (data && typeof data === "object") {
+    const body = data as { message?: string; error?: string; detail?: string };
+    return body.message || body.error || body.detail || `AgentPhone ${status}`;
+  }
+  return `AgentPhone ${status}`;
+}
+
+function missingAssignedNumber(data: unknown) {
+  return JSON.stringify(data).toLowerCase().includes("no phone number assigned");
+}
+
+async function createOutboundCall(body: CallRequestBody) {
+  const response = await fetch(`${AGENTPHONE_BASE_URL}/v1/calls`, {
+    method: "POST",
+    headers: headers(),
+    body: JSON.stringify(body),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    return { ok: false, error: agentPhoneError(response.status, data), data };
+  }
+  return { ok: true, data };
+}
+
+async function createOutboundCallWithReadyAgent(body: CallRequestBody) {
+  const ready = await ensureAgentPhoneNumber(body.agentId);
+  if (!ready.ok) return { ok: false, error: ready.error || "AgentPhone number is not ready.", data: ready.data };
+
+  let result = await createOutboundCall(body);
+  if (!result.ok && missingAssignedNumber(result.data)) {
+    const retriedReady = await ensureAgentPhoneNumber(body.agentId, true);
+    if (!retriedReady.ok) {
+      return { ok: false, error: retriedReady.error || result.error, data: retriedReady.data || result.data };
+    }
+    result = await createOutboundCall(body);
+  }
+
+  return result;
+}
+
 export async function startAgentPhoneCall({
   campaign,
   lead,
@@ -196,15 +354,9 @@ export async function startAgentPhoneCall({
   };
 
   try {
-    const response = await fetch(`${AGENTPHONE_BASE_URL}/v1/calls`, {
-      method: "POST",
-      headers: headers(),
-      body: JSON.stringify(body),
-    });
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      return { ok: false, error: data?.message || data?.error || `AgentPhone ${response.status}`, data };
-    }
+    const result = await createOutboundCallWithReadyAgent(body);
+    if (!result.ok) return result;
+    const data = result.data;
 
     await addConversationEvent({
       campaign_id: campaign.id,
@@ -296,15 +448,9 @@ export async function startAgentPhoneSchedulingCall({
   };
 
   try {
-    const response = await fetch(`${AGENTPHONE_BASE_URL}/v1/calls`, {
-      method: "POST",
-      headers: headers(),
-      body: JSON.stringify(body),
-    });
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      return { ok: false, error: data?.message || data?.error || `AgentPhone ${response.status}`, data };
-    }
+    const result = await createOutboundCallWithReadyAgent(body);
+    if (!result.ok) return result;
+    const data = result.data;
 
     await addConversationEvent({
       campaign_id: campaign.id,
