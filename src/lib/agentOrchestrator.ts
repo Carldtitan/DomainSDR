@@ -42,6 +42,9 @@ type AgentTickOptions = {
   maxContactEnrichmentPerTick?: number;
   maxDailyNegotiationSends?: number;
   maxDailySends?: number;
+  minReachablePerCampaign?: number;
+  maxLeadPoolPerCampaign?: number;
+  maxResearchCampaignsPerTick?: number;
 };
 
 function isDraftableLead(lead: BuyerLead) {
@@ -72,15 +75,18 @@ function defaultOptions(): Required<AgentTickOptions> {
     makePhoneCalls: process.env.AGENT_AUTOPILOT_CALLS === "true",
     minHoursSinceLastSend: Number(process.env.AGENT_FOLLOWUP_MIN_HOURS || 72),
     minHoursBetweenResearch: Number(process.env.AGENT_RESEARCH_MIN_HOURS || 6),
-    minLeadsPerCampaign: Number(process.env.AGENT_MIN_LEADS_PER_CAMPAIGN || 8),
+    minLeadsPerCampaign: Number(process.env.AGENT_MIN_LEADS_PER_CAMPAIGN || 20),
     maxNegotiationRepliesPerTick: Number(process.env.AGENT_NEGOTIATION_MAX_SENDS_PER_TICK || 5),
-    maxDraftsPerTick: Number(process.env.AGENT_MAX_DRAFTS_PER_TICK || 5),
-    maxFirstTouchSendsPerTick: Number(process.env.AGENT_FIRST_TOUCH_MAX_SENDS_PER_TICK || 2),
-    maxFollowUpsPerTick: Number(process.env.AGENT_FOLLOWUP_MAX_SENDS_PER_TICK || 3),
-    maxCallsPerTick: Number(process.env.AGENT_CALL_MAX_PER_TICK || 1),
-    maxContactEnrichmentPerTick: Number(process.env.AGENT_CONTACT_ENRICH_MAX_PER_TICK || 1),
+    maxDraftsPerTick: Number(process.env.AGENT_MAX_DRAFTS_PER_TICK || 10),
+    maxFirstTouchSendsPerTick: Number(process.env.AGENT_FIRST_TOUCH_MAX_SENDS_PER_TICK || 5),
+    maxFollowUpsPerTick: Number(process.env.AGENT_FOLLOWUP_MAX_SENDS_PER_TICK || 5),
+    maxCallsPerTick: Number(process.env.AGENT_CALL_MAX_PER_TICK || 2),
+    maxContactEnrichmentPerTick: Number(process.env.AGENT_CONTACT_ENRICH_MAX_PER_TICK || 6),
     maxDailyNegotiationSends: Number(process.env.AGENT_NEGOTIATION_MAX_DAILY_SENDS || 20),
-    maxDailySends: Number(process.env.AGENT_FOLLOWUP_MAX_DAILY_SENDS || 5),
+    maxDailySends: Number(process.env.AGENT_FOLLOWUP_MAX_DAILY_SENDS || 15),
+    minReachablePerCampaign: Number(process.env.AGENT_MIN_REACHABLE_PER_CAMPAIGN || 5),
+    maxLeadPoolPerCampaign: Number(process.env.AGENT_MAX_LEAD_POOL_PER_CAMPAIGN || 40),
+    maxResearchCampaignsPerTick: Number(process.env.AGENT_RESEARCH_CAMPAIGNS_PER_TICK || 2),
   };
 }
 
@@ -95,17 +101,29 @@ async function researchCampaigns(store: AppStore, resolved: Required<AgentTickOp
   const researched = [];
 
   for (const campaign of activeCampaigns(store, resolved.campaignId)) {
-    const leadCount = store.buyerLeads.filter((lead) => lead.campaign_id === campaign.id).length;
+    const campaignLeads = store.buyerLeads.filter((lead) => lead.campaign_id === campaign.id);
+    const leadCount = campaignLeads.length;
+    const reachableCount = campaignLeads.filter((lead) => lead.contact_email || lead.contact_phone).length;
     const recentlyResearched = hoursBetween(campaign.updated_at) < resolved.minHoursBetweenResearch;
+    const noLeads = leadCount === 0;
+    const needsMoreLeads = leadCount < resolved.minLeadsPerCampaign;
+    const needsMoreReachableContacts =
+      reachableCount < resolved.minReachablePerCampaign && leadCount < resolved.maxLeadPoolPerCampaign;
+    const researchIsDue = noLeads || !recentlyResearched || resolved.forceResearch;
     const shouldResearch =
-      (leadCount === 0 && (!recentlyResearched || resolved.forceResearch)) ||
-      (leadCount < resolved.minLeadsPerCampaign &&
-        (!recentlyResearched || resolved.forceResearch) &&
-        !["deposit_requested", "negotiating"].includes(campaign.status));
+      researchIsDue &&
+      (noLeads ||
+        ((needsMoreLeads || needsMoreReachableContacts) &&
+          !["deposit_requested", "negotiating"].includes(campaign.status)));
 
     if (!shouldResearch) continue;
 
-    console.log("[agent] research started", { campaignId: campaign.id, domain: campaign.domain, leadCount });
+    console.log("[agent] research started", {
+      campaignId: campaign.id,
+      domain: campaign.domain,
+      leadCount,
+      reachableCount,
+    });
     await updateCampaign(campaign.id, { status: "researching" });
     const analysis = campaign.analysis || (await analyzeDomain(campaign.domain, campaign.use_case_thesis));
     if (!campaign.analysis) await updateCampaign(campaign.id, { analysis });
@@ -113,7 +131,10 @@ async function researchCampaigns(store: AppStore, resolved: Required<AgentTickOp
       enrichContacts: false,
       scoreWithLlm: false,
       maxQueries: 4,
-      maxCandidates: Math.min(15, Math.max(12, resolved.minLeadsPerCampaign)),
+      maxCandidates: Math.min(
+        resolved.maxLeadPoolPerCampaign,
+        Math.max(15, resolved.minLeadsPerCampaign, leadCount + 10),
+      ),
     });
     const leads = await upsertLeads(campaign.id, discovered);
     console.log("[agent] research saved", { campaignId: campaign.id, domain: campaign.domain, leads: leads.length });
@@ -123,7 +144,7 @@ async function researchCampaigns(store: AppStore, resolved: Required<AgentTickOp
       content: JSON.stringify({ analysis, leads }, null, 2),
     });
     researched.push({ campaign_id: campaign.id, domain: campaign.domain, leads_found: leads.length });
-    break;
+    if (researched.length >= resolved.maxResearchCampaignsPerTick) break;
   }
 
   return researched;
@@ -154,55 +175,67 @@ function leadContactInput(lead: BuyerLead) {
 async function enrichReachableContacts(store: AppStore, resolved: Required<AgentTickOptions>) {
   if (resolved.maxContactEnrichmentPerTick <= 0) return [];
 
-  const enrichedContacts = [];
   const leads = store.buyerLeads
     .filter((lead) => !resolved.campaignId || lead.campaign_id === resolved.campaignId)
     .filter((lead) => !lead.contact_email && !lead.contact_phone)
     .filter((lead) => !["opted_out", "escalated", "deposit_requested"].includes(lead.status))
-    .sort((a, b) => b.fit_score - a.fit_score)
+    .sort((a, b) => {
+      const aAlreadyTried = a.next_action?.includes("No public email or phone found yet.") ? 1 : 0;
+      const bAlreadyTried = b.next_action?.includes("No public email or phone found yet.") ? 1 : 0;
+      if (aAlreadyTried !== bAlreadyTried) return aAlreadyTried - bAlreadyTried;
+      if (aAlreadyTried && bAlreadyTried) {
+        return (Date.parse(a.updated_at) || 0) - (Date.parse(b.updated_at) || 0);
+      }
+      return b.fit_score - a.fit_score;
+    })
     .slice(0, resolved.maxContactEnrichmentPerTick);
 
-  for (const lead of leads) {
+  const browserFallbackLimit = Number(process.env.BROWSER_USE_CONTACT_MAX_LEADS || 1);
+  const results = await Promise.allSettled(leads.map(async (lead, index) => {
     try {
       console.log("[agent] contact enrichment started", { campaignId: lead.campaign_id, leadId: lead.id, company: lead.company_name });
-      const enriched = await enrichLeadContact(leadContactInput(lead));
+      const enriched = await enrichLeadContact(leadContactInput(lead), { browserFallback: index < browserFallbackLimit });
+      const contactEmail = enriched.contact_email || "";
+      const contactPhone = enriched.contact_phone || "";
       await updateLead(lead.id, {
-        contact_email: enriched.contact_email,
-        contact_url: enriched.contact_url,
-        contact_phone: enriched.contact_phone,
+        contact_email: contactEmail,
+        contact_url: enriched.contact_url || lead.contact_url,
+        contact_phone: contactPhone,
         phone_source_url: enriched.phone_source_url,
         decision_maker_name: enriched.decision_maker_name,
         decision_maker_role: enriched.decision_maker_role,
         reason_fit: enriched.reason_fit,
-        next_action: enriched.contact_email
+        next_action: contactEmail
           ? "Public email found; outreach can be drafted."
-          : enriched.contact_phone
+          : contactPhone
             ? "Public phone found; phone outreach can be queued."
             : "No public email or phone found yet.",
       });
-      enrichedContacts.push({
+      const result = {
         campaign_id: lead.campaign_id,
         buyer_lead_id: lead.id,
         company_name: lead.company_name,
-        contact_email: enriched.contact_email,
-        contact_phone: enriched.contact_phone,
-      });
+        contact_email: contactEmail,
+        contact_phone: contactPhone,
+      };
       console.log("[agent] contact enrichment completed", {
         campaignId: lead.campaign_id,
         leadId: lead.id,
-        email: Boolean(enriched.contact_email),
-        phone: Boolean(enriched.contact_phone),
+        email: Boolean(contactEmail),
+        phone: Boolean(contactPhone),
       });
+      return result;
     } catch (error) {
       console.error("[agent] contact enrichment failed", {
         campaignId: lead.campaign_id,
         leadId: lead.id,
         error: error instanceof Error ? error.message : String(error),
       });
+      return undefined;
     }
-  }
+  }));
 
-  return enrichedContacts;
+  return results.flatMap((result) => (result.status === "fulfilled" && result.value ? [result.value] : []));
 }
 
 async function prepareOutreachDrafts(store: AppStore, maxDrafts: number, campaignId = "") {
@@ -224,7 +257,7 @@ async function prepareOutreachDrafts(store: AppStore, maxDrafts: number, campaig
       .sort((a, b) => b.fit_score - a.fit_score)
       .slice(0, Math.max(0, maxDrafts - drafted.length));
 
-    for (const lead of leads) {
+    const results = await Promise.allSettled(leads.map(async (lead) => {
       const generated = await generateOutboundEmail(campaign, lead);
       const message = await addOrUpdateOutboundMessage({
         campaign_id: campaign.id,
@@ -238,7 +271,11 @@ async function prepareOutreachDrafts(store: AppStore, maxDrafts: number, campaig
         status: "email_drafted",
         next_action: "Outbound drafted; broker can send under campaign guardrails.",
       });
-      drafted.push({ campaign_id: campaign.id, buyer_lead_id: lead.id, company_name: lead.company_name, message_id: message.id });
+      return { campaign_id: campaign.id, buyer_lead_id: lead.id, company_name: lead.company_name, message_id: message.id };
+    }));
+
+    for (const result of results) {
+      if (result.status === "fulfilled") drafted.push(result.value);
       if (drafted.length >= maxDrafts) return drafted;
     }
   }
@@ -654,21 +691,21 @@ export async function runAgentTick(options: AgentTickOptions = {}) {
   console.log("[agent] tick started", { campaignId: resolved.campaignId || "all" });
   const processedReplies = await pollAgentMailReplies();
   let store = await loadStore();
+  const negotiationSendsRemaining = Math.max(
+    0,
+    resolved.maxDailyNegotiationSends - negotiationRepliesSentToday(store.outboundMessages, resolved.campaignId),
+  );
+  const negotiationResult = await advanceNegotiations(store, resolved, negotiationSendsRemaining);
+  store = await loadStore();
   const researchedCampaigns = await researchCampaigns(store, resolved);
   store = await loadStore();
-  const enrichedContacts = researchedCampaigns.length > 0 ? [] : await enrichReachableContacts(store, resolved);
+  const enrichedContacts = await enrichReachableContacts(store, resolved);
   store = await loadStore();
   const draftedOutreach = await prepareOutreachDrafts(store, resolved.maxDraftsPerTick, resolved.campaignId);
   store = await loadStore();
   let sendsRemaining = Math.max(0, resolved.maxDailySends - sentToday(store.outboundMessages, resolved.campaignId));
   const firstTouchResult = await sendFirstTouchOutreach(store, resolved, sendsRemaining);
   sendsRemaining = firstTouchResult.sendsRemaining;
-  store = await loadStore();
-  const negotiationSendsRemaining = Math.max(
-    0,
-    resolved.maxDailyNegotiationSends - negotiationRepliesSentToday(store.outboundMessages, resolved.campaignId),
-  );
-  const negotiationResult = await advanceNegotiations(store, resolved, negotiationSendsRemaining);
   store = await loadStore();
   const followUps = [];
   const sentFollowUps = [];

@@ -5,6 +5,9 @@ import { domainFromUrl, normalizeDomain } from "@/lib/format";
 import { saveEmailPatternMemory, searchEmailPatternMemory } from "@/lib/supermemoryService";
 
 type LeadInput = Omit<BuyerLead, "id" | "campaign_id" | "created_at" | "updated_at">;
+type EnrichOptions = {
+  browserFallback?: boolean;
+};
 
 type PageContent = {
   url: string;
@@ -381,8 +384,10 @@ async function applyBrowserFallback(lead: LeadInput) {
   return enriched;
 }
 
-export async function enrichLeadContact(lead: LeadInput): Promise<LeadInput> {
-  return applyBrowserFallback(await enrichLeadContactCore(lead));
+export async function enrichLeadContact(lead: LeadInput, options: EnrichOptions = {}): Promise<LeadInput> {
+  const enriched = await enrichLeadContactCore(lead);
+  if (options.browserFallback === false) return enriched;
+  return applyBrowserFallback(enriched);
 }
 
 export async function enrichLeadContacts(leads: LeadInput[]) {

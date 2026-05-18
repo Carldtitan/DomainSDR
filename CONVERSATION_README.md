@@ -733,3 +733,35 @@ Ended-state clarity fix:
 - Closed or paused runs now convert incomplete milestones to `stopped`.
 - The live page no longer shows animated refresh/spinner icons for stopped runs.
 - The status pill now says `Ended`/`Paused`, not `Response reached`, when the run is stopped.
+
+## Tree Workflow Pivot
+
+The user then pointed out that the broker had become too sequential.
+
+The failure mode was:
+
+- A run could research buyers, then wait for a later wake before enriching contacts.
+- Contact enrichment only worked one lead at a time.
+- Failed contact searches kept taking priority over fresh leads.
+- The broker looked like it was waiting for one buyer to say no before moving to the next buyer.
+- Reply handling could sit behind slow research and scraping.
+
+The product direction was clarified as a tree-like broker workflow:
+
+- Research should keep expanding the buyer pool while outreach is already running.
+- Contact enrichment should fan out across several leads per wake.
+- Drafting should happen in batches.
+- First-touch outreach should go to several reachable leads under daily send caps, not one lead at a time.
+- Reply handling should take priority over research.
+- Failed contact lookups should rotate behind untried leads so the agent does not get stuck on the same company.
+- Browser Use remains a capped fallback for hard contact discovery because it is slower and credit-limited.
+
+Implementation changes from this pivot:
+
+- Removed the gate that skipped contact enrichment after a research pass.
+- Added capped parallel contact enrichment.
+- Added batched parallel outreach drafting.
+- Increased guarded caps for leads, reachable-contact targets, drafts, first-touch sends, follow-ups, and calls.
+- Added a larger lead pool target so the broker can keep looking for more possible buyers.
+- Moved negotiation reply handling before research and scraping.
+- Updated the live run copy to show that the broker is searching, enriching, sending batches, and checking replies.

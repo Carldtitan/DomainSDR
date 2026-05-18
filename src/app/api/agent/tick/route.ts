@@ -22,6 +22,9 @@ export async function POST(request: Request) {
     maxContactEnrichmentPerTick?: number;
     maxDailyNegotiationSends?: number;
     maxDailySends?: number;
+    minReachablePerCampaign?: number;
+    maxLeadPoolPerCampaign?: number;
+    maxResearchCampaignsPerTick?: number;
   };
   const result = await runAgentTick(body);
   return Response.json(result);
