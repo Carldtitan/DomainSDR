@@ -530,6 +530,33 @@ The fix direction:
 
 This is more agentic because the user is no longer waiting on a hidden form submission. They see the broker run as a live process.
 
+## Light UI and Reachability Pivot
+
+The user then called out two problems:
+
+- The UI looked too dark and could overflow badly at low browser zoom or with long scraped text.
+- Buyer discovery was finding companies, but not enough reachable contacts.
+
+The product direction changed again:
+
+- Make the app light by default, closer to Vercel/Stripe: white surfaces, subtle borders, clear spacing, sharp typography, and restrained dark mode.
+- Keep dark mode available with a toggle.
+- Make every card and activity item handle long URLs, emails, scrape snippets, and conversation text without horizontal overflow.
+- Treat company discovery as incomplete unless the agent finds a public email or phone number.
+- Prefer AgentMail when a public email exists.
+- Prefer AgentPhone when a public phone exists.
+- Keep controlled routing active so outbound email still goes to `carl@uni.minerva.edu` and outbound phone still goes to `6284887063` until real outreach is intentionally enabled.
+
+Implementation direction from this pivot:
+
+- Added a theme toggle and light-first shell.
+- Reworked the launch and live agent screens to use clean borders and white cards with dark-mode variants.
+- Added hard text wrapping for long scraped content.
+- Expanded contact enrichment paths and search snippets.
+- Extracted `mailto:` links, obfuscated emails, public phone numbers, and additional contact pages.
+- Made email outreach require a real public email instead of only a contact URL.
+- Made phone outreach eligible for phone-reachable leads while routing calls to the controlled phone number.
+
 ## Integration and Partnership Opportunities
 
 The app should avoid reinventing:

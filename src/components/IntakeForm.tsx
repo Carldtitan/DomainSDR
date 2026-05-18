@@ -23,8 +23,8 @@ function LaunchProgress({ step }: { step: LaunchStep }) {
   ];
 
   return (
-    <div className="rounded-md border border-cyan-300/30 bg-cyan-300/10 p-4">
-      <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-cyan-50">
+    <div className="rounded-md border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-900">
+      <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-slate-950 dark:text-white">
         <Loader2 className="animate-spin" size={16} />
         Starting the agent
       </div>
@@ -36,14 +36,16 @@ function LaunchProgress({ step }: { step: LaunchStep }) {
             <div key={item.id} className="flex gap-3">
               <span
                 className={`mt-0.5 flex h-6 w-6 items-center justify-center rounded-full ${
-                  done ? "bg-cyan-300 text-slate-950" : "border border-white/15 bg-white/5"
+                  done
+                    ? "bg-slate-950 text-white dark:bg-white dark:text-slate-950"
+                    : "border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-950"
                 }`}
               >
                 {active ? <Loader2 className="animate-spin" size={14} /> : done ? <Check size={14} /> : null}
               </span>
               <span>
-                <span className="block text-sm font-medium text-white">{item.label}</span>
-                <span className="block text-xs leading-5 text-slate-400">{item.detail}</span>
+                <span className="block text-sm font-medium text-slate-950 dark:text-white">{item.label}</span>
+                <span className="block text-xs leading-5 text-slate-500 dark:text-slate-400">{item.detail}</span>
               </span>
             </div>
           );
@@ -82,19 +84,19 @@ export function IntakeForm() {
       <Panel>
         <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h1 className="text-3xl font-semibold text-white">Launch a domain broker</h1>
-            <p className="mt-1 text-sm text-slate-400">
+            <h1 className="text-3xl font-semibold text-slate-950 dark:text-white">Launch a domain broker</h1>
+            <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
               Enter the domain and rules once. Then the agent works until a buyer replies or a deposit is paid.
             </p>
           </div>
         </div>
 
         <form action={submit} className="grid gap-5">
-          <div className="rounded-md border border-white/10 bg-slate-950 p-4">
+          <div className="rounded-md border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-900">
             <div className="mb-4 flex items-center justify-between gap-3">
               <div>
-                <h2 className="font-semibold text-white">1. Domain Owner</h2>
-                <p className="mt-1 text-sm text-slate-500">Used for signatures, ownership proof, and owner escalation.</p>
+                <h2 className="font-semibold text-slate-950 dark:text-white">1. Domain Owner</h2>
+                <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Used for signatures, ownership proof, and owner escalation.</p>
               </div>
               <StatusBadge>required</StatusBadge>
             </div>
@@ -122,10 +124,10 @@ export function IntakeForm() {
             </div>
           </div>
 
-          <div className="rounded-md border border-white/10 bg-slate-950 p-4">
+          <div className="rounded-md border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-900">
             <div className="mb-4">
-              <h2 className="font-semibold text-white">2. Price Rules</h2>
-              <p className="mt-1 text-sm text-slate-500">The floor is hidden from buyers and enforced server-side.</p>
+              <h2 className="font-semibold text-slate-950 dark:text-white">2. Price Rules</h2>
+              <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">The floor is hidden from buyers and enforced server-side.</p>
             </div>
             <div className="grid gap-4 md:grid-cols-3">
               <div>
@@ -143,30 +145,30 @@ export function IntakeForm() {
             </div>
           </div>
 
-          <div className="rounded-md border border-white/10 bg-slate-950 p-4">
+          <div className="rounded-md border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-900">
             <div className="mb-4">
-              <h2 className="font-semibold text-white">3. Broker Permissions</h2>
-              <p className="mt-1 text-sm text-slate-500">
+              <h2 className="font-semibold text-slate-950 dark:text-white">3. Broker Permissions</h2>
+              <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
                 The broker starts working immediately. These rules decide how far it can go without owner approval.
               </p>
             </div>
-            <div className="grid gap-3 text-sm text-slate-200 md:grid-cols-3">
-              <label className="flex items-center gap-2 rounded-md border border-white/10 bg-white/5 p-3">
-                <input name="can_negotiate" type="checkbox" defaultChecked className="h-4 w-4 accent-cyan-300" />
+            <div className="grid gap-3 text-sm text-slate-700 dark:text-slate-200 md:grid-cols-3">
+              <label className="flex items-center gap-2 rounded-md border border-slate-200 bg-white p-3 shadow-sm dark:border-slate-800 dark:bg-slate-950">
+                <input name="can_negotiate" type="checkbox" defaultChecked className="h-4 w-4 accent-slate-950 dark:accent-white" />
                 Can negotiate
               </label>
-              <label className="flex items-center gap-2 rounded-md border border-white/10 bg-white/5 p-3">
-                <input name="can_offer_payment_plan" type="checkbox" className="h-4 w-4 accent-cyan-300" />
+              <label className="flex items-center gap-2 rounded-md border border-slate-200 bg-white p-3 shadow-sm dark:border-slate-800 dark:bg-slate-950">
+                <input name="can_offer_payment_plan" type="checkbox" className="h-4 w-4 accent-slate-950 dark:accent-white" />
                 Payment plan allowed
               </label>
-              <label className="flex items-center gap-2 rounded-md border border-white/10 bg-white/5 p-3">
-                <input name="can_offer_lease_to_own" type="checkbox" className="h-4 w-4 accent-cyan-300" />
+              <label className="flex items-center gap-2 rounded-md border border-slate-200 bg-white p-3 shadow-sm dark:border-slate-800 dark:bg-slate-950">
+                <input name="can_offer_lease_to_own" type="checkbox" className="h-4 w-4 accent-slate-950 dark:accent-white" />
                 Lease-to-own allowed
               </label>
             </div>
           </div>
 
-          <div className="rounded-md border border-white/10 bg-slate-950 p-4">
+          <div className="rounded-md border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-900">
             <FieldLabel>Use case thesis</FieldLabel>
             <textarea
               className={`${inputClass} min-h-24 resize-y`}
@@ -175,7 +177,7 @@ export function IntakeForm() {
             />
           </div>
 
-          {error ? <p className="rounded-md border border-red-400/30 bg-red-500/10 px-3 py-2 text-sm text-red-200">{error}</p> : null}
+          {error ? <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-400/30 dark:bg-red-500/10 dark:text-red-200">{error}</p> : null}
           <LaunchProgress step={launchStep} />
 
           <button className={buttonClass} disabled={launchStep !== "idle"} type="submit">

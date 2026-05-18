@@ -118,8 +118,9 @@ function localBuyerFitScore(campaign: DomainCampaign, buyer: LeadCandidate) {
     score += Math.min(24, overlap * 8);
   }
 
-  if (buyer.contact_email) score += 6;
-  else if (buyer.contact_url) score += 4;
+  if (buyer.contact_email) score += 8;
+  if (buyer.contact_phone) score += 8;
+  else if (buyer.contact_url) score += 2;
 
   if (campaign.domain.endsWith(".ai") && !buyer.current_domain.endsWith(".ai")) score += 5;
   if (!CONTENT_PATH_PATTERN.test(sourcePath(buyer.source_url))) score += 4;
