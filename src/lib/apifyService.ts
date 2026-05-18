@@ -228,7 +228,7 @@ function searchItemsToCandidates(
         status: "new",
       });
 
-      if (candidates.length >= 20) return candidates;
+      if (candidates.length >= 40) return candidates;
     }
   }
 
@@ -486,5 +486,5 @@ export async function discoverBuyers(campaign: DomainCampaign, analysis: DomainA
       status: "scored" as const,
     }));
 
-  return scored.sort((a, b) => b.fit_score - a.fit_score).slice(0, 20);
+  return scored.sort((a, b) => b.fit_score - a.fit_score).slice(0, resolved.maxCandidates);
 }

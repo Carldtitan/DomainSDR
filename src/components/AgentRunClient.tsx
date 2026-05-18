@@ -137,7 +137,7 @@ export function AgentRunClient({ initialState }: { initialState: AgentRunState }
       : wakeStatus === "checking"
         ? "Checking status and replies."
         : wakeStatus === "working"
-          ? "Working now: buyers, outreach, replies, follow-up, deposits."
+          ? "Working now: searching, enriching contacts, sending batches, checking replies."
           : waiting
             ? "Waiting for the next wake or reply."
             : "Reply or deposit reached.";

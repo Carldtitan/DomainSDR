@@ -10,18 +10,22 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
 
   await runAgentTick({
     campaignId: id,
-    forceResearch: true,
+    forceResearch: false,
     discoverBuyers: true,
     sendFirstTouch: true,
     sendNegotiationReplies: true,
     sendFollowUps: true,
     makePhoneCalls: true,
-    minLeadsPerCampaign: 15,
-    minHoursBetweenResearch: 2,
-    maxDraftsPerTick: 5,
-    maxFirstTouchSendsPerTick: 2,
-    maxFollowUpsPerTick: 1,
-    maxDailySends: 5,
+    minLeadsPerCampaign: 25,
+    minReachablePerCampaign: 5,
+    maxLeadPoolPerCampaign: 40,
+    minHoursBetweenResearch: 0.1,
+    maxDraftsPerTick: 10,
+    maxContactEnrichmentPerTick: 6,
+    maxFirstTouchSendsPerTick: 5,
+    maxFollowUpsPerTick: 3,
+    maxCallsPerTick: 2,
+    maxDailySends: 15,
   });
 
   const full = await getFullCampaign(id);

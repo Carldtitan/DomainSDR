@@ -86,8 +86,8 @@ export function buildAgentRunState(full: FullCampaign) {
       state: full.leads.length > 0 ? "done" : full.campaign.status === "researching" ? "working" : "queued",
       detail:
         full.leads.length > 0
-          ? `${full.leads.length} found. ${reachableLeads.length} reachable.`
-          : "Finding companies and contacts.",
+          ? `${full.leads.length} found. ${emailReachable.length} email. ${phoneReachable.length} phone.`
+          : "Finding companies and contact paths.",
     },
     {
       label: "Outreach",
@@ -95,7 +95,9 @@ export function buildAgentRunState(full: FullCampaign) {
       detail:
         sentMessages.length > 0 || callsStarted.length > 0
           ? `${sentMessages.length} emails. ${callsStarted.length} calls.`
-          : "Preparing messages.",
+          : draftMessages.length > 0 || reachableLeads.length > 0
+            ? "Drafting and sending in batches."
+            : "Waiting for reachable contacts.",
     },
     {
       label: "Replies",

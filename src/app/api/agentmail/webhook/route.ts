@@ -35,10 +35,19 @@ export async function POST(request: Request) {
 
   const event = await processAgentMailMessage(payload.message);
   const agent = await runAgentTick({
+    campaignId: event?.campaign_id,
+    discoverBuyers: true,
+    sendFirstTouch: true,
     sendNegotiationReplies: true,
     sendFollowUps: true,
-    maxDraftsPerTick: 3,
-    maxFirstTouchSendsPerTick: 2,
+    minLeadsPerCampaign: 25,
+    minReachablePerCampaign: 5,
+    maxLeadPoolPerCampaign: 40,
+    maxDraftsPerTick: 8,
+    maxContactEnrichmentPerTick: 4,
+    maxFirstTouchSendsPerTick: 4,
+    maxFollowUpsPerTick: 3,
+    maxDailySends: 15,
   });
 
   return Response.json({ ok: true, event, agent });
