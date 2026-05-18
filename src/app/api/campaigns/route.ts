@@ -57,6 +57,7 @@ export async function POST(request: Request) {
   try {
     broker = await runAgentTick({
       campaignId: campaign.id,
+      forceResearch: true,
       discoverBuyers: true,
       sendFirstTouch: true,
       sendNegotiationReplies: true,

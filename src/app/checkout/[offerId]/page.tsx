@@ -13,7 +13,7 @@ export default async function CheckoutPage({ params }: { params: Promise<{ offer
   if (!full) notFound();
 
   return (
-    <AppShell campaign={full.campaign} active="dashboard">
+    <AppShell campaign={full.campaign}>
       <CheckoutClient offer={offer} domain={full.campaign.domain} />
     </AppShell>
   );

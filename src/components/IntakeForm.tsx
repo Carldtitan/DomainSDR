@@ -2,13 +2,10 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
 import { Loader2, Play } from "lucide-react";
 import { buttonClass, FieldLabel, inputClass, Panel, StatusBadge } from "@/components/AppShell";
-import type { DomainCampaign } from "@/lib/types";
-import { compactDate, money } from "@/lib/format";
 
-export function IntakeForm({ campaigns }: { campaigns: DomainCampaign[] }) {
+export function IntakeForm() {
   const router = useRouter();
   const [pending, setPending] = useState<"campaign" | null>(null);
   const [error, setError] = useState("");
@@ -28,17 +25,17 @@ export function IntakeForm({ campaigns }: { campaigns: DomainCampaign[] }) {
       setError(data.error || "Could not create campaign");
       return;
     }
-    router.push(`/campaign/${data.campaign.id}/dashboard`);
+    router.push(`/campaign/${data.campaign.id}/agent`);
   }
 
   return (
-    <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
+    <div className="mx-auto max-w-3xl">
       <Panel>
         <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h1 className="text-2xl font-semibold text-white">Launch Domain Broker</h1>
+            <h1 className="text-3xl font-semibold text-white">Launch a domain broker</h1>
             <p className="mt-1 text-sm text-slate-400">
-              Once launched, the broker researches buyers, starts capped outreach, watches replies, and negotiates inside your rules.
+              Enter the domain and rules once. Then the agent works until a buyer replies or a deposit is paid.
             </p>
           </div>
         </div>
@@ -133,35 +130,9 @@ export function IntakeForm({ campaigns }: { campaigns: DomainCampaign[] }) {
 
           <button className={buttonClass} disabled={Boolean(pending)} type="submit">
             {pending === "campaign" ? <Loader2 className="animate-spin" size={16} /> : <Play size={16} />}
-            {pending === "campaign" ? "Launching broker..." : "Launch Broker"}
+            {pending === "campaign" ? "Launching broker and starting outreach..." : "Start Agent"}
           </button>
         </form>
-      </Panel>
-
-      <Panel>
-        <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-white">Recent Campaigns</h2>
-          <StatusBadge>{campaigns.length}</StatusBadge>
-        </div>
-        <div className="grid gap-3">
-          {campaigns.length === 0 ? (
-            <p className="text-sm text-slate-400">No campaigns yet.</p>
-          ) : (
-            campaigns.slice(0, 8).map((campaign) => (
-              <Link
-                key={campaign.id}
-                href={`/campaign/${campaign.id}/dashboard`}
-                className="rounded-md border border-white/10 bg-slate-950 p-3 transition hover:border-cyan-300/70"
-              >
-                <span className="block font-medium text-white">{campaign.domain}</span>
-                <span className="mt-1 block text-sm text-slate-400">
-                  {money(campaign.ask_price)} ask - {campaign.status.replaceAll("_", " ")}
-                </span>
-                <span className="mt-1 block text-xs text-slate-500">{compactDate(campaign.created_at)}</span>
-              </Link>
-            ))
-          )}
-        </div>
       </Panel>
     </div>
   );
