@@ -730,6 +730,20 @@ export async function updateCampaign(id: string, patch: Partial<DomainCampaign>)
   });
 }
 
+export async function endActiveCampaigns() {
+  const now = new Date().toISOString();
+  return mutateStore((store) => {
+    const ended: DomainCampaign[] = [];
+    for (const campaign of store.campaigns) {
+      if (["closed", "paused"].includes(campaign.status)) continue;
+      campaign.status = "closed";
+      campaign.updated_at = now;
+      ended.push(campaign);
+    }
+    return ended.sort((a, b) => b.created_at.localeCompare(a.created_at));
+  });
+}
+
 export async function upsertLeads(campaignId: string, leads: Omit<BuyerLead, "id" | "campaign_id" | "created_at" | "updated_at">[]) {
   const now = new Date().toISOString();
   return mutateStore((store) => {

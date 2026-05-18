@@ -28,9 +28,15 @@ export function buildAgentRunState(full: FullCampaign) {
   );
   const depositPaid = full.offers.some((offer) => offer.status === "deposit_paid");
   const depositRequested = full.offers.some((offer) => offer.status === "deposit_requested" || offer.status === "deposit_paid");
+  const ended = full.campaign.status === "closed";
+  const paused = full.campaign.status === "paused";
 
-  const terminal = depositPaid || (inboundReplies.length > 0 && pendingInbound.length === 0);
-  const stage = depositPaid
+  const terminal = ended || paused || depositPaid || (inboundReplies.length > 0 && pendingInbound.length === 0);
+  const stage = ended
+    ? "ended"
+    : paused
+      ? "paused"
+      : depositPaid
     ? "deposit_paid"
     : inboundReplies.length > 0
       ? pendingInbound.length > 0
@@ -55,9 +61,15 @@ export function buildAgentRunState(full: FullCampaign) {
     reply_received: "Reply received",
     reply_handled: "Reply handled",
     deposit_paid: "Deposit paid",
+    ended: "Ended",
+    paused: "Paused",
   };
 
-  const subheadline = depositPaid
+  const subheadline = ended
+    ? "This run is stopped."
+    : paused
+      ? "This run is paused."
+      : depositPaid
     ? "Use escrow or a trusted marketplace for transfer."
     : inboundReplies.length > 0
       ? "The run reached a buyer response."
