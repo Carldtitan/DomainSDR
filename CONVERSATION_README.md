@@ -852,3 +852,21 @@ Implementation changes:
 - Keep paid runs active until handoff is underway or a weekend handoff time is proposed.
 - Add a Handoff milestone and buyer contact activity so the user can see the buyer email/phone status after deposit payment.
 - Add a queued scheduling event before calling AgentPhone so overlapping agent wakes do not start duplicate handoff calls.
+
+## Phone Signature Misparsed As Offer
+
+The user then flagged an unacceptable generated reply:
+
+- The broker wrote that it could not accept `$628` and countered at `$1,200`.
+- This was not a real buyer offer.
+- The classifier had parsed the phone signature `(628)-488-7063` as a bare numeric offer.
+- The response wording also used bad template language: `lowest counter`.
+
+Fix:
+
+- Removed the bad negotiation wording from source.
+- Below-floor counters now avoid saying `lowest` or repeating a bogus buyer number as an offer.
+- Offer extraction now strips phone-number-like strings before looking for prices.
+- Bare numbers only count as offers when the surrounding reply has explicit price language.
+- LLM-extracted offer amounts are normalized against the deterministic extractor so a phone number cannot become an offer amount.
+- Cleaned the hosted database rows that contained the old bad response or suggested response.

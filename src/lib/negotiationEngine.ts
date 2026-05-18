@@ -173,7 +173,7 @@ ${signature(campaign)}`,
       const counter = Math.max(amount + 100, Math.round(policy.ask_price * 0.8));
       const safeCounter = Math.min(policy.ask_price, Math.max(policy.floor_price, Math.ceil(counter / 50) * 50));
       return {
-        body: `I could not do ${money(amount)}, but I can meet you at ${money(safeCounter)} for ${campaign.domain}.
+        body: `Thanks for the offer. I can keep this moving at ${money(safeCounter)} for ${campaign.domain}.
 
 If that works, I can send a ${money(policy.deposit_amount)} deposit link and use escrow or a trusted marketplace for transfer.
 
@@ -185,9 +185,9 @@ ${signature(campaign)}`,
 
     const counter = counterAboveFloor(policy);
     return {
-      body: `I appreciate the offer, but I could not do ${money(amount)}.
+      body: `Thanks for the offer. That number is below what I can accept for ${campaign.domain}.
 
-The lowest counter I can put forward here is ${money(counter)}. If that is workable, I can send a small deposit link and use escrow or a trusted marketplace for transfer.
+I can keep the sale moving at ${money(counter)}. If that works, I can send a ${money(policy.deposit_amount)} deposit link and use escrow or a trusted marketplace for transfer.
 
 ${signature(campaign)}`,
       next_action: "Rejected below-floor offer and countered above floor.",
