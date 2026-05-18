@@ -1,4 +1,4 @@
-import { addConversationEvent, addOutboundMessage, updateLead } from "@/lib/campaignStore";
+import { addConversationEvent, addOutboundMessage, loadStore, updateConversationEvent, updateLead } from "@/lib/campaignStore";
 import { replyWithAgentMail, sendEmailWithAgentMail } from "@/lib/agentMailService";
 import { startAgentPhoneSchedulingCall } from "@/lib/agentPhoneService";
 import { outboundEmailRecipient, outboundPhoneRecipient } from "@/lib/contactRouting";
@@ -8,6 +8,7 @@ import type { AppStore, BuyerLead, ConversationEvent, DomainCampaign, Negotiatio
 
 const HANDOFF_NEXT_ACTION = "Await buyer phone and weekend availability.";
 const SCHEDULING_NEXT_ACTION = "Weekend handoff scheduling call started.";
+const SCHEDULING_ATTEMPT_NEXT_ACTION = "Weekend handoff scheduling call queued.";
 
 function normalizePhone(value: string) {
   const digits = value.replace(/\D/g, "");
@@ -63,9 +64,8 @@ function handoffAlreadyRequested(events: ConversationEvent[]) {
 function schedulingCallAlreadyStarted(events: ConversationEvent[]) {
   return events.some(
     (event) =>
-      event.channel === "phone" &&
       event.direction === "outbound" &&
-      event.next_action === SCHEDULING_NEXT_ACTION,
+      (event.next_action === SCHEDULING_NEXT_ACTION || event.next_action === SCHEDULING_ATTEMPT_NEXT_ACTION),
   );
 }
 
@@ -141,22 +141,38 @@ async function startSchedulingCall({
     await updateLead(lead.id, { contact_phone: buyerPhone, phone_source_url: "buyer_reply" });
   }
 
+  const latestStore = await loadStore();
+  const latestEvents = latestStore.conversationEvents.filter((event) => event.buyer_lead_id === lead.id);
+  if (schedulingCallAlreadyStarted(latestEvents)) {
+    return { ok: true, skipped: true, reason: "Scheduling call already started or queued." };
+  }
+
   const toNumber = process.env.ALLOW_EXTERNAL_PHONE_OUTBOUND === "true" && buyerPhone ? buyerPhone : outboundPhoneRecipient();
+  const attempt = await addConversationEvent({
+    campaign_id: campaign.id,
+    buyer_lead_id: lead.id,
+    channel: "manual",
+    direction: "outbound",
+    body: `AgentPhone scheduling call queued to ${toNumber}. Buyer phone on file: ${buyerPhone || lead.contact_phone || "not provided"}.`,
+    classification: "system_note",
+    offer_amount: offer.amount,
+    next_action: SCHEDULING_ATTEMPT_NEXT_ACTION,
+  });
+
   const result = await startAgentPhoneSchedulingCall({ campaign, lead: { ...lead, contact_phone: buyerPhone || lead.contact_phone }, policy, offer, toNumber });
   if (!result.ok) {
     const resultData = "data" in result ? result.data : undefined;
     const detail = resultData ? ` ${JSON.stringify(resultData).slice(0, 240)}` : "";
-    await addConversationEvent({
-      campaign_id: campaign.id,
-      buyer_lead_id: lead.id,
-      channel: "manual",
-      direction: "outbound",
+    await updateConversationEvent(attempt.id, {
       body: `AgentPhone scheduling call could not start: ${result.error || "unknown error"}.${detail}`,
-      classification: "system_note",
-      offer_amount: offer.amount,
       next_action: "Fix AgentPhone caller number, then retry scheduling call.",
     });
     await updateLead(lead.id, { next_action: `Deposit paid; AgentPhone scheduling not started: ${result.error}` });
+  } else {
+    await updateConversationEvent(attempt.id, {
+      body: `AgentPhone scheduling call accepted to ${toNumber}. Buyer phone on file: ${buyerPhone || lead.contact_phone || "not provided"}.`,
+      next_action: SCHEDULING_NEXT_ACTION,
+    });
   }
   return result;
 }

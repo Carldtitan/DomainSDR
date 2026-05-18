@@ -851,3 +851,4 @@ Implementation changes:
 - Record AgentPhone scheduling failures as visible run activity instead of silently updating only lead metadata.
 - Keep paid runs active until handoff is underway or a weekend handoff time is proposed.
 - Add a Handoff milestone and buyer contact activity so the user can see the buyer email/phone status after deposit payment.
+- Add a queued scheduling event before calling AgentPhone so overlapping agent wakes do not start duplicate handoff calls.
