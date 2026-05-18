@@ -705,3 +705,4 @@ Follow-up quality fix:
 - Discovery now searches four focused queries and can refresh campaigns with fewer than 15 leads.
 - Added a source-backed nano/materials fallback list of real companies so `nano.ai` does not depend only on noisy search result pages.
 - Ranked source-backed vertical leads first and updated the activity feed to show highest-fit leads rather than insertion order.
+- Changed Apify timeout fallback logging from error to warning because source-backed fallback is now an expected recovery path.

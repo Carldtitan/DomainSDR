@@ -440,7 +440,7 @@ export async function discoverBuyers(campaign: DomainCampaign, analysis: DomainA
     candidates = searchItemsToCandidates(campaign, analysis, items);
     console.log("[discoverBuyers] search completed", { campaignId: campaign.id, domain: campaign.domain, candidates: candidates.length });
   } catch (error) {
-    console.error("[discoverBuyers] search failed", {
+    console.warn("[discoverBuyers] live search skipped", {
       campaignId: campaign.id,
       domain: campaign.domain,
       error: error instanceof Error ? error.message : String(error),
