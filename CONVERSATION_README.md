@@ -765,3 +765,24 @@ Implementation changes from this pivot:
 - Added a larger lead pool target so the broker can keep looking for more possible buyers.
 - Moved negotiation reply handling before research and scraping.
 - Updated the live run copy to show that the broker is searching, enriching, sending batches, and checking replies.
+
+## AgentMail Conversation Explanation
+
+The user then asked how the AgentMail conversation actually works and how the website knows what to say.
+
+Clarification:
+
+- AgentMail is the transport layer. It sends emails, receives replies, exposes message ids and thread ids, and triggers the webhook.
+- DomainSDR decides what to say.
+- First-touch emails are generated from campaign context and buyer context.
+- Replies are matched back to a lead using AgentMail thread id, `in_reply_to`, references, original message id, sender, recipient, subject, and campaign metadata.
+- The reply body is classified into intent classes such as `asks_price`, `interested`, `lowball_offer`, `not_interested`, `opt_out`, `asks_proof`, `asks_payment_plan`, `asks_escrow`, and `legal_concern`.
+- Gemini is used for reply classification.
+- The actual negotiation response is produced by a rule-based negotiation engine using the campaign ask price, floor price, deposit amount, escalation threshold, and seller permissions.
+- The engine never goes below the floor, does not reveal the floor, suppresses opt-outs, avoids traffic/revenue/legal claims, offers proof-of-ownership routes, and recommends escrow or trusted marketplaces.
+- If a deposit should be requested, the orchestrator creates a Stripe/mock deposit link and appends it to the reply.
+- AgentMail then sends the response in the same message thread.
+
+Important product note:
+
+- The app is not letting the LLM freely negotiate. The LLM identifies buyer intent; the deterministic policy engine decides the allowed response.
